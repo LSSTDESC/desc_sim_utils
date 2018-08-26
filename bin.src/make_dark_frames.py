@@ -89,7 +89,10 @@ if __name__ == '__main__':
                         'the multiprocessing module. Default: 1')
     args = parser.parse_args()
 
-    header_dir = '/global/cscratch1/sd/jchiang8/desc/calibration_products/imsim/cp_headers' if args.header_dir is None else args.header_dir
+    header_dir = args.header_dir
+    if header_dir is None:
+        header_dir = os.path.join(os.environ['DESC_SIM_UTILS_DIR'],
+                                  'data', 'calib_headers')
 
     logger=desc.imsim.get_logger(args.log_level)
 
