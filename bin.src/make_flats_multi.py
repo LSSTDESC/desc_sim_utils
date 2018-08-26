@@ -36,7 +36,8 @@ class ImSimWcs(galsim.fitswcs.GSFitsWCS):
         self._header['RATEL'] = obs_md.pointingRA
         self._header['DECTEL'] = obs_md.pointingDec
         self._header['ROTANGLE'] = obs_md.rotSkyPos
-        self._header['CHIPID'] = det_name
+        self._header['CHIPID'] \
+            = "R{}_S{}".format(det_name[2:5:2], det_name[8:11:2])
         self._header['OBSID'] = obs_md.OpsimMetaData['obshistID']
         self._header['OUTFILE'] = eimage_file
 
@@ -125,8 +126,8 @@ if __name__ == '__main__':
                     continue
                 wcs = fits_wcs[det_name]
                 rng = galsim.UniformDeviate(args.visit + i)
-                args = (det_name, wcs, args.counts_per_iter, args.niter, rng)
-                results.append(pool.apply_async(make_sensor_flat, args))
+                fargs = (det_name, wcs, args.counts_per_iter, args.niter, rng)
+                results.append(pool.apply_async(make_sensor_flat, fargs))
             pool.close()
             pool.join()
             for res in results:
