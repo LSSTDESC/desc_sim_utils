@@ -4,7 +4,6 @@ Script to convert imSim eimage files to raw files using the
 multiprocessing module.
 """
 import os
-import sys
 import argparse
 import warnings
 import multiprocessing
@@ -17,8 +16,8 @@ class WriteAmpFile:
         self.opsim_db = opsim_db
 
     def __call__(self, eimage_file, outdir='.'):
-        print("processing", os.path.basename(eimage_file))
-        sys.stdout.flush()
+        global logger
+        logger.info(os.path.basename(eimage_file))
         image_source \
             = desc.imsim.ImageSource.create_from_eimage(eimage_file,
                                                         opsim_db=self.opsim_db)
@@ -42,13 +41,17 @@ if __name__ == '__main__':
                         help="Number of parallel processes to use.")
     parser.add_argument('--outdir', type=str, default='.',
                         help='output directory for raw files')
+    parser.add_argument('--log_level', type=str, default='INFO',
+                        choices='DEBUG INFO WARN ERROR CRITICAL'.split())
     args = parser.parse_args()
 
     opsim_db = args.opsim_db if args.opsim_db is not None else \
                '/global/projecta/projectdirs/lsst/groups/SSim/DC2/minion_1016_desc_dithered_v4.db'
 
     if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
+        os.makedirs(args.outdir, exist_ok=True)
+
+    logger = desc.imsim.get_logger(args.log_level, name='make_raw_files')
 
     write_amp_file = WriteAmpFile(opsim_db=opsim_db)
     results = []
