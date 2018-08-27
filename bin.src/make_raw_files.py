@@ -6,7 +6,9 @@ multiprocessing module.
 import os
 import sys
 import argparse
+import warnings
 import multiprocessing
+from astropy._erfa import ErfaWarning
 import desc.imsim
 
 class WriteAmpFile:
@@ -15,6 +17,8 @@ class WriteAmpFile:
         self.opsim_db = opsim_db
 
     def __call__(self, eimage_file, outdir='.'):
+        print("processing", os.path.basename(eimage_file))
+        sys.stdout.flush()
         image_source \
             = desc.imsim.ImageSource.create_from_eimage(eimage_file,
                                                         opsim_db=self.opsim_db)
@@ -48,18 +52,18 @@ if __name__ == '__main__':
 
     write_amp_file = WriteAmpFile(opsim_db=opsim_db)
     results = []
-    with multiprocessing.Pool(processes=args.processes, maxtasksperchild=1) \
-         as pool:
-        for item in args.eimage_files:
-            outfile = write_amp_file.outfile(item, args.outdir)
-            if os.path.isfile(outfile):
-                continue
-            print("processing", os.path.basename(item))
-            sys.stdout.flush()
-            results.append(pool.apply_async(write_amp_file, (item,),
-                                            dict(outdir=args.outdir)))
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', 'ERFA function', ErfaWarning)
+        with multiprocessing.Pool(processes=args.processes, maxtasksperchild=1)\
+             as pool:
+            for item in args.eimage_files:
+                outfile = write_amp_file.outfile(item, args.outdir)
+                if os.path.isfile(outfile):
+                    continue
+                results.append(pool.apply_async(write_amp_file, (item,),
+                                                dict(outdir=args.outdir)))
 
-        pool.close()
-        pool.join()
-        for res in results:
-            res.get()
+            pool.close()
+            pool.join()
+            for res in results:
+                res.get()
