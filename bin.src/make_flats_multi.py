@@ -40,6 +40,7 @@ class ImSimWcs(galsim.fitswcs.GSFitsWCS):
             = "R{}_S{}".format(det_name[2:5:2], det_name[8:11:2])
         self._header['OBSID'] = obs_md.OpsimMetaData['obshistID']
         self._header['OUTFILE'] = eimage_file
+        self._header['IMGTYPE'] = 'FLAT'
 
     def _writeHeader(self, header, bounds):
         """Re-implementation of the galsim.FitsWCS._writeHeader method."""

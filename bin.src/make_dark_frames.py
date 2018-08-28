@@ -37,6 +37,7 @@ class DarkFrames:
         eimage[0].header['MJD-OBS'] = self.mjd
         eimage[0].header['DATE-OBS'] = self.date_obs
         eimage[0].header['OBSID'] = visit
+        eimage[0].header['IMGTYPE'] = 'BIAS' if self.exptime == 0 else 'DARK'
 
         raw_image \
             = desc.imsim.ImageSource(eimage[0].data, self.exptime, chip_id)
@@ -94,7 +95,7 @@ if __name__ == '__main__':
         header_dir = os.path.join(os.environ['DESC_SIM_UTILS_DIR'],
                                   'data', 'calib_headers')
 
-    logger=desc.imsim.get_logger(args.log_level)
+    logger = desc.imsim.get_logger(args.log_level)
 
     dark_frames = DarkFrames(header_dir, args.visit0, args.exptime)
 
