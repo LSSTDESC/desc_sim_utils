@@ -35,8 +35,9 @@ if __name__ == '__main__':
     parser.add_argument('eimage_files', type=str, nargs="+",
                         help="eimage files to process")
     parser.add_argument('--opsim_db', type=str, default=None,
-                        help="opsim db file.  If None, then the NERSC location "
-                        "of minion_1016_desc_dithered_v4.db will be used.")
+                        help="opsim db file.  This is only needed for older "
+                        "eimage files that do not have pointing info in "
+                        "the PHDU.")
     parser.add_argument('--processes', type=int, default=1,
                         help="Number of parallel processes to use.")
     parser.add_argument('--outdir', type=str, default='.',
@@ -45,15 +46,12 @@ if __name__ == '__main__':
                         choices='DEBUG INFO WARN ERROR CRITICAL'.split())
     args = parser.parse_args()
 
-    opsim_db = args.opsim_db if args.opsim_db is not None else \
-               '/global/projecta/projectdirs/lsst/groups/SSim/DC2/minion_1016_desc_dithered_v4.db'
-
     if not os.path.isdir(args.outdir):
         os.makedirs(args.outdir, exist_ok=True)
 
     logger = desc.imsim.get_logger(args.log_level, name='make_raw_files')
 
-    write_amp_file = WriteAmpFile(opsim_db=opsim_db)
+    write_amp_file = WriteAmpFile(opsim_db=args.opsim_db)
     results = []
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', 'ERFA function', ErfaWarning)
