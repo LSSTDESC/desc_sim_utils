@@ -97,6 +97,8 @@ if __name__ == '__main__':
                         help='directory of template headers for calibration '
                         'products. If None, then the default location '
                         'will be used.')
+    parser.add_argument('--exptime', type=float, default=10.,
+                        help='flat exposure time in seconds. Default: 10')
     args = parser.parse_args()
 
     header_dir = args.header_dir
@@ -110,8 +112,8 @@ if __name__ == '__main__':
     instcat = os.path.join(os.environ['DESC_SIM_UTILS_DIR'],
                            'data', 'flat_instcat.txt')
     obs_md, phot_params, _ \
-        = desc.imsim.parsePhoSimInstanceFile(instcat, numRows=30)
-    phot_params._exptime = 80000.
+        = desc.imsim.parsePhoSimInstanceFile(instcat, (), numRows=30)
+    phot_params._exptime = args.exptime
     obs_md.OpsimMetaData['obshistID'] = args.visit
 
     camera_wrapper = LSSTCameraWrapper()
