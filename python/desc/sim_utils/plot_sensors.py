@@ -1,5 +1,5 @@
 """
-Functions to plot Run2.0 simulation region and sensors that intersect it.
+Functions to plot LSST sensors on the sky.
 """
 import warnings
 import numpy as np
@@ -13,7 +13,7 @@ with warnings.catch_warnings():
 import desc.imsim
 
 
-__all__ = ['make_patch', 'plot_sensors', 'plot_survey_region']
+__all__ = ['make_patch', 'plot_sensors', 'set_xylims']
 
 
 def make_patch(vertexList, wcs=None):
@@ -83,20 +83,10 @@ def plot_sensors(sensors, obs_md, ax=None, color='red', figsize=(8, 6)):
 
     return ax
 
-def plot_survey_region(ax=None):
-    """Plot the Run2.0 WFD region."""
-    ra = (73.79, 71.46, 52.25, 49.92, 73.79)
-    dec = (-44.33, -27.25, -27.25, -44.33, -44.33)
-    if ax is None:
-        fig = plt.figure(figsize=(12, 8))
-        ax = fig.add_subplot(111)
-    plt.errorbar(ra, dec, fmt='-', label='DC2 WFD region')
-    return ax
-
 def set_xylims(instcat, radius=2.1):
     """Set the plot limits so that it encompasses the focalplane."""
-    with open(instcat, 'r') as fd:
-        for line in fd:
+    with desc.imsim.fopen(instcat, mode='rt') as fd:
+        for _, line in zip(range(30), fd):
             if line.startswith('rightascension'):
                 ra = float(line.strip().split()[1])
             if line.startswith('declination'):
@@ -104,13 +94,3 @@ def set_xylims(instcat, radius=2.1):
     plt.ylim(dec - radius, dec + radius)
     dra = radius/np.cos(np.radians(dec))
     plt.xlim(ra - dra, ra + dra)
-
-if __name__ == '__main__':
-    from trim_sensors import Run20Region
-    ax = plot_survey_region()
-    run20_region = Run20Region()
-    for instcat in ('phosim_cat_3040.txt', 'phosim_cat_2188.txt'):
-        obs_md, _, _ \
-            = desc.imsim.parsePhoSimInstanceFile(instcat, (), numRows=50)
-        sensors = run20_region.trim_sensors(instcat)
-        ax = plot_sensors(sensors, obs_md, ax=ax)
