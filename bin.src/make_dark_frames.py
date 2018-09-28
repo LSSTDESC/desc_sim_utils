@@ -10,6 +10,7 @@ import numpy as np
 from astropy.io import fits
 from astropy._erfa import ErfaWarning
 import astropy.time
+import lsst.utils as lsstUtils
 import desc.imsim
 
 desc.imsim.get_config()
@@ -38,7 +39,10 @@ class DarkFrames:
         eimage[0].header['DATE-OBS'] = self.date_obs
         eimage[0].header['OBSID'] = visit
         eimage[0].header['IMGTYPE'] = 'BIAS' if self.exptime == 0 else 'DARK'
-
+        seed = self.random_seed(visit, chip_id)
+        eimage[0].header['RANDSEED'] = seed
+        eimage[0].data \
+            = self.add_cosmic_rays(eimage[0].data, self.exptime, seed)
         raw_image \
             = desc.imsim.ImageSource(eimage[0].data, self.exptime, chip_id)
         raw_image.eimage = eimage
@@ -70,6 +74,33 @@ class DarkFrames:
                 pool.join()
                 for res in results:
                     res.get()
+
+    @staticmethod
+    def add_cosmic_rays(imarr, exptime, seed):
+        """
+        Add cosmic rays to an array of pixels
+        """
+        config = desc.imsim.read_config()
+        ccd_rate = config['cosmic_rays']['ccd_rate']
+        if exptime == 0 or ccd_rate == 0:
+            return imarr
+        catalog = os.path.join(lsstUtils.getPackageDir('imsim'),
+                               'data', 'cosmic_ray_catalog.fits.gz')
+        crs = desc.imsim.CosmicRays.read_catalog(catalog, ccd_rate=ccd_rate)
+        crs.set_seed(seed)
+        return crs.paint(imarr, exptime=exptime)
+
+    @staticmethod
+    def random_seed(visit, chip_id):
+        """
+        Return a random seed generated from a hash of the visit number
+        and chip id.
+        """
+        # Convert to obs_lsstSim CCD name so that seed is consistent
+        # with imSim.
+        detname = "R:{},{} S:{},{}".format(*[x for x in chip_id if x.isdigit()])
+        return desc.imsim.CosmicRays.generate_seed(visit, detname)
+
 
 if __name__ == '__main__':
     import argparse
