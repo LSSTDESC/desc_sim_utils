@@ -6,8 +6,10 @@ import os
 import sys
 import glob
 import time
+import warnings
 from collections import defaultdict
-import astropy.io.fits as fits
+from astropy.io import fits
+from astropy.utils.exceptions import AstropyWarning, AstropyUserWarning
 import astropy.time
 import lsst.obs.lsstCam as lsstCam
 
@@ -44,7 +46,8 @@ class PhoSimRepackager:
     def __init__(self):
         self.amp_info_records = list(list(lsstCam.LsstCamMapper().camera)[0])
 
-    def process_visit(self, visit_dir, out_dir=None, verbose=False):
+    def process_visit(self, visit_dir, out_dir=None, image_type='SKYEXP',
+                      verbose=False):
         """
         Parameters
         ----------
@@ -53,6 +56,8 @@ class PhoSimRepackager:
         out_dir: str [None]
             Output directory for MEF files. If None, then a directory
             with name v<visit #>-<band> will be created in the cwd.
+        image_type: str ['SKYEXP']
+            Image type, e.g., 'SKYEXP', 'BIAS', 'DARK', 'FLAT'.
         verbose: bool [False]
             Set to True to print out time for processing each sensor.
         """
@@ -78,12 +83,13 @@ class PhoSimRepackager:
             if os.path.isfile(gzip_file):
                 continue
             print("repackaging", gzip_file)
-            self.repackage(amp_files[sensor_id], out_dir=out_dir)
+            self.repackage(amp_files[sensor_id], out_dir=out_dir,
+                           image_type=image_type)
             if verbose:
                 print(time.time() - t0)
                 sys.stdout.flush()
 
-    def repackage(self, phosim_amp_files, out_dir='.'):
+    def repackage(self, phosim_amp_files, out_dir='.', image_type='SKYEXP'):
         """
         Repackage a collection of phosim amplifier files for a
         single sensor into a multi-extension FITS file.
@@ -113,7 +119,8 @@ class PhoSimRepackager:
                   '10': '00'}
 
         # Create the HDUList to contain the MEF data.
-        sensor = fits.HDUList(fits.PrimaryHDU())
+        phdu = fits.PrimaryHDU()
+        sensor = fits.HDUList(phdu)
 
         # Extract the data for each segment from the FITS files
         # into a dictionary keyed by channel id.
@@ -123,7 +130,19 @@ class PhoSimRepackager:
             # This is the incorrect channel id, so correct it when
             # filling the segments dictionary.
             phosim_channel = os.path.basename(fn).split('_')[6][1:]
-            segments[ch_map[phosim_channel]] = fits.open(fn)[0]
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=AstropyWarning,
+                                        append=True)
+                warnings.filterwarnings('ignore', category=AstropyUserWarning,
+                                        append=True)
+                with fits.open(fn) as phosim_amp:
+                    # Use tile compression for the pixel data.
+                    segments[ch_map[phosim_channel]] \
+                        = fits.CompImageHDU(data=phosim_amp[0].data,
+                                            compression_type='RICE_1')
+                    # Copy the header keywords from the original file.
+                    segments[ch_map[phosim_channel]]\
+                        .header.update(phosim_amp[0].header)
 
         # Set the NOAO section keywords based on the pixel geometry
         # in the LsstCam object.
@@ -145,29 +164,31 @@ class PhoSimRepackager:
 
         # Set keywords in primary HDU, extracting most of the relevant
         # ones from the first phosim amplifier file.
-        chip_id = sensor[1].header['CHIPID']
+        amp_hdr = sensor[1].header
+        chip_id = amp_hdr['CHIPID']
         raft, ccd = chip_id.split('_')
-        sensor[0].header['EXPTIME'] = sensor[1].header['EXPTIME']
-        sensor[0].header['DARKTIME'] = sensor[1].header['DARKTIME']
-        sensor[0].header['RUNNUM'] = sensor[1].header['OBSID']
-        sensor[0].header['MJD-OBS'] = sensor[1].header['MJD-OBS']
-        sensor[0].header['DATE-OBS'] \
-            = astropy.time.Time(sensor[1].header['MJD-OBS'], format='mjd').isot
-        sensor[0].header['FILTER'] = sensor[1].header['FILTER']
-        sensor[0].header['LSST_NUM'] = chip_id
-        sensor[0].header['CHIPID'] = chip_id
-        sensor[0].header['OBSID'] = sensor[1].header['OBSID']
-        sensor[0].header['TESTTYPE'] = 'PHOSIM'
-        sensor[0].header['IMGTYPE'] = 'SKYEXP'
-        sensor[0].header['MONOWL'] = -1
-        sensor[0].header['RAFTNAME'] = raft
-        sensor[0].header['SENSNAME'] = ccd
+        phdu.header['EXPTIME'] = amp_hdr['EXPTIME']
+        phdu.header['DARKTIME'] = amp_hdr['DARKTIME']
+        phdu.header['RUNNUM'] = amp_hdr['OBSID']
+        phdu.header['MJD-OBS'] = amp_hdr['MJD-OBS']
+        phdu.header['DATE-OBS'] \
+            = astropy.time.Time(amp_hdr['MJD-OBS'], format='mjd').isot
+        phdu.header['FILTER'] = amp_hdr['FILTER']
+        phdu.header['LSST_NUM'] = chip_id
+        phdu.header['CHIPID'] = chip_id
+        phdu.header['OBSID'] = amp_hdr['OBSID']
+        phdu.header['AIRMASS'] = amp_hdr['AIRMASS']
+        phdu.header['TESTTYPE'] = 'PHOSIM'
+        phdu.header['IMGTYPE'] = image_type
+        phdu.header['MONOWL'] = -1
+        phdu.header['RAFTNAME'] = raft
+        phdu.header['SENSNAME'] = ccd
         # Add boresight pointing angles and rotskypos (angle of sky
         # relative to Camera coordinates) from which obs_lsstCam can
         # infer the CCD-wide WCS.
-        sensor[0].header['RATEL'] = sensor[1].header['RA_DEG']
-        sensor[0].header['DECTEL'] = sensor[1].header['DEC_DEG']
-        sensor[0].header['ROTANGLE'] = sensor[1].header['ROTANGZ']
+        phdu.header['RATEL'] = amp_hdr['RA_DEG']
+        phdu.header['DECTEL'] = amp_hdr['DEC_DEG']
+        phdu.header['ROTANGLE'] = amp_hdr['ROTANGZ']
 
         outfile = self.mef_filename(phosim_amp_files[0], out_dir=out_dir)
         sensor.writeto(outfile, overwrite=True)
@@ -182,9 +203,8 @@ class PhoSimRepackager:
         # Remove the channel identifier.
         outfile = '_'.join(tokens[:6] + tokens[7:])
         outfile = os.path.join(out_dir, outfile)
-        # astropy's gzip compression is very slow, so remove any .gz
-        # extension from the computed output filename and gzip the
-        # files later.
+        # Since these files use tile-compression, remove any .gz
+        # extension from the computed output filename.
         if outfile.endswith('.gz'):
             outfile = outfile[:-len('.gz')]
         return outfile
