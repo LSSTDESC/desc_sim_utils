@@ -6,12 +6,7 @@ pip install nose
 pip install coveralls
 git clone https://github.com/lsst/obs_lsstCam.git
 cd obs_lsstCam
-git checkout u/jchiang/imsim_crosstalk
-setup -r . -j
-scons
-cd ..
-git clone https://github.com/LSSTDESC/imSim.git
-cd imSim
+git checkout imsim-0.1.0
 setup -r . -j
 scons
 cd ..
