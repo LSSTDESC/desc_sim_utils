@@ -10,7 +10,6 @@ import lsst.afw.geom as afw_geom
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import lsst.sims.coordUtils
-import desc.imsim
 
 
 __all__ = ['make_patch', 'plot_sensors', 'set_xylims']
@@ -48,7 +47,8 @@ def make_patch(vertexList, wcs=None):
              ]
     return Path(verts, codes)
 
-def plot_sensors(sensors, obs_md, ax=None, color='red', figsize=(8, 6)):
+
+def plot_sensors(sensors, obs_md, camera, ax=None, color='red', figsize=(8, 6)):
     """
     Plot the CCDs in the LSST focal plane using CCD coordinates
     derived from the pointing info using the lsst.sims code.
@@ -59,8 +59,15 @@ def plot_sensors(sensors, obs_md, ax=None, color='red', figsize=(8, 6)):
         List of sensors to plot.
     obs_md: ObservationMetaData
         Instance of an lsst_sims observation metadata class.
+    camera: lsst.afw.cameraGeom.Camera
+        Camera object that contains the camera info.
+    ax: matplotlib.axes.Axes
+        matplotlib container class of figure elements.
     color: str ['red']
         Color to use for plotting the individual CCDs.
+    figsize: tuple [(8, 6)]
+        Size of the figure in inches
+
     Returns
     -------
     matplotlib.axes._subplots.AxesSubplot: The subplot object used for plotting.
@@ -68,8 +75,6 @@ def plot_sensors(sensors, obs_md, ax=None, color='red', figsize=(8, 6)):
     if ax is None:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
-
-    camera = desc.imsim.get_obs_lsstSim_camera()
 
     # Re-order the CCD vertex list returned by the lsst_sims code so
     # that a rectangle is plotted.
@@ -85,7 +90,7 @@ def plot_sensors(sensors, obs_md, ax=None, color='red', figsize=(8, 6)):
 
 def set_xylims(instcat, radius=2.1):
     """Set the plot limits so that it encompasses the focalplane."""
-    with desc.imsim.fopen(instcat, mode='rt') as fd:
+    with open(instcat, mode='r') as fd:
         for _, line in zip(range(30), fd):
             if line.startswith('rightascension'):
                 ra = float(line.strip().split()[1])
