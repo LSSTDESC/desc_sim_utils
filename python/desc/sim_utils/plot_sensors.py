@@ -10,7 +10,7 @@ import lsst.afw.geom as afw_geom
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import lsst.sims.coordUtils
-
+from .trim_sensors import Run20Region
 
 __all__ = ['make_patch', 'plot_sensors', 'set_xylims']
 
@@ -48,7 +48,8 @@ def make_patch(vertexList, wcs=None):
     return Path(verts, codes)
 
 
-def plot_sensors(sensors, obs_md, camera, ax=None, color='red', figsize=(8, 6)):
+def plot_sensors(sensors, instcat, camera, ax=None, color='red',
+                 figsize=(8, 6)):
     """
     Plot the CCDs in the LSST focal plane using CCD coordinates
     derived from the pointing info using the lsst.sims code.
@@ -57,8 +58,9 @@ def plot_sensors(sensors, obs_md, camera, ax=None, color='red', figsize=(8, 6)):
     ----------
     sensors: list
         List of sensors to plot.
-    obs_md: ObservationMetaData
-        Instance of an lsst_sims observation metadata class.
+    instcat: str
+        Instance catalog containing the pointing information for the
+        desired visit.
     camera: lsst.afw.cameraGeom.Camera
         Camera object that contains the camera info.
     ax: matplotlib.axes.Axes
@@ -72,6 +74,7 @@ def plot_sensors(sensors, obs_md, camera, ax=None, color='red', figsize=(8, 6)):
     -------
     matplotlib.axes._subplots.AxesSubplot: The subplot object used for plotting.
     """
+    obs_md = Run20Region.get_obs_md(instcat)
     if ax is None:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
