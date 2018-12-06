@@ -49,7 +49,7 @@ class DarkFrames:
             = self.add_cosmic_rays(eimage[0].data, self.exptime, seed)
         raw_image \
             = desc.imsim.ImageSource(eimage[0].data, self.exptime, chip_id,
-                                     visit=visit)
+                                     visit=visit, logger=logger)
         raw_image.eimage = eimage
         raw_image.eimage_data = eimage[0].data
         raw_image._read_pointing_info(None)
