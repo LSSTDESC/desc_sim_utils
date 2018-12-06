@@ -23,7 +23,9 @@ class DarkFrames:
         self.visit0 = visit0
         self.exptime = exptime
         self.mjd = mjd
-        self.date_obs = astropy.time.Time(mjd, format='mjd').isot
+        self.date_obs = astropy.time.Time(mjd, format='mjd')
+        self.date_end \
+            = self.date_obs + astropy.time.TimeDelta(exptime, format='sec')
         self.ny_nx = ny_nx
         self.header_files \
             = sorted(glob.glob(os.path.join(cp_header_dir, 'lsst_e*')))
@@ -36,7 +38,9 @@ class DarkFrames:
         eimage[0].data = np.zeros(self.ny_nx, dtype=np.float)
         eimage[0].header['EXPTIME'] = self.exptime
         eimage[0].header['MJD-OBS'] = self.mjd
-        eimage[0].header['DATE-OBS'] = self.date_obs
+        eimage[0].header['DATE-OBS'] = self.date_obs.isot
+        eimage[0].header['DATE-END'] = self.date_end.isot
+        eimage[0].header['AIRMASS'] = 0
         eimage[0].header['OBSID'] = visit
         eimage[0].header['IMGTYPE'] = 'BIAS' if self.exptime == 0 else 'DARK'
         seed = self.random_seed(visit, chip_id)
