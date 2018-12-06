@@ -5,7 +5,7 @@ given visit.
 import warnings
 import numpy as np
 from lsst.afw import cameraGeom
-import lsst.obs.lsstCam as obs_lsstCam
+import lsst.obs.lsst as obs_lsst
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
     from lsst.sims.coordUtils import getCornerRaDec
@@ -75,7 +75,7 @@ class Run20Region:
     def trim_sensors(self, instcat):
         obs_md = self.get_obs_md(instcat)
 
-        camera = obs_lsstCam.LsstCamMapper().camera
+        camera = obs_lsst.LsstCamMapper().camera
 
         sensors = []
         for det in list(camera):

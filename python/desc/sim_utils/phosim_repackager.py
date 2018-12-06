@@ -11,7 +11,7 @@ from collections import defaultdict
 from astropy.io import fits
 from astropy.utils.exceptions import AstropyWarning, AstropyUserWarning
 import astropy.time
-import lsst.obs.lsstCam as lsstCam
+import lsst.obs.lsst as obs_lsst
 
 __all__ = ['PhoSimRepackager', 'noao_section_keyword']
 
@@ -44,7 +44,7 @@ class PhoSimRepackager:
     MEFs with one HDU per amp.
     """
     def __init__(self):
-        self.amp_info_records = list(list(lsstCam.LsstCamMapper().camera)[0])
+        self.amp_info_records = list(list(obs_lsst.LsstCamMapper().camera)[0])
 
     def process_visit(self, visit_dir, out_dir=None, image_type='SKYEXP',
                       verbose=False):
@@ -184,7 +184,7 @@ class PhoSimRepackager:
         phdu.header['RAFTNAME'] = raft
         phdu.header['SENSNAME'] = ccd
         # Add boresight pointing angles and rotskypos (angle of sky
-        # relative to Camera coordinates) from which obs_lsstCam can
+        # relative to Camera coordinates) from which obs_lsst can
         # infer the CCD-wide WCS.
         phdu.header['RATEL'] = amp_hdr['RA_DEG']
         phdu.header['DECTEL'] = amp_hdr['DEC_DEG']

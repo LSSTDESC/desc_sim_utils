@@ -4,9 +4,8 @@ source loadLSST.bash
 setup lsst_sims
 pip install nose
 pip install coveralls
-git clone https://github.com/lsst/obs_lsstCam.git
-cd obs_lsstCam
-git checkout imsim-0.1.0
+git clone https://github.com/lsst/obs_lsst.git
+cd obs_lsst
 setup -r . -j
 scons
 cd ..
