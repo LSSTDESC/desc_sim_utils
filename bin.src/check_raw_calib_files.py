@@ -26,8 +26,8 @@ if args.visits[0].startswith('@'):
 else:
     visits = [int(_) for _ in args.visits]
 
-results = desc.sim_utils.process_visits(butler, visits, nsigma=args.nsigma,
-                                        processes=args.processes)
+results = desc.sim_utils.qa_process_visits(butler, visits, nsigma=args.nsigma,
+                                           processes=args.processes)
 
 with open(args.outfile, 'wb') as output:
     pickle.dump(results, output)
