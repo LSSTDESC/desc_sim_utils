@@ -32,29 +32,34 @@ class DarkFrames:
 
     def _process_sensor(self, visit, template_file):
         global logger
-        eimage = fits.open(template_file)
-        chip_id = eimage[0].header['CHIPID']
-        logger.info("  %s", chip_id)
-        eimage[0].data = np.zeros(self.ny_nx, dtype=np.float)
-        eimage[0].header['EXPTIME'] = self.exptime
-        eimage[0].header['MJD-OBS'] = self.mjd
-        eimage[0].header['DATE-OBS'] = self.date_obs.isot
-        eimage[0].header['DATE-END'] = self.date_end.isot
-        eimage[0].header['AIRMASS'] = 0
-        eimage[0].header['OBSID'] = visit
-        eimage[0].header['IMGTYPE'] = 'BIAS' if self.exptime == 0 else 'DARK'
-        seed = self.random_seed(visit, chip_id)
-        eimage[0].header['RANDSEED'] = seed
-        eimage[0].data \
-            = self.add_cosmic_rays(eimage[0].data, self.exptime, seed)
-        raw_image \
-            = desc.imsim.ImageSource(eimage[0].data, self.exptime, chip_id,
-                                     visit=visit, logger=logger)
-        raw_image.eimage = eimage
-        raw_image.eimage_data = eimage[0].data
-        raw_image._read_pointing_info(None)
-        raw_file = 'lsst_a_{}_{}.fits'.format(visit, chip_id)
-        raw_image.write_fits_file(raw_file)
+        with fits.open(template_file) as eimage:
+            chip_id = eimage[0].header['CHIPID']
+            logger.info("  %s", chip_id)
+            eimage[0].data = np.zeros(self.ny_nx, dtype=np.float)
+            eimage[0].header['EXPTIME'] = self.exptime
+            eimage[0].header['MJD-OBS'] = self.mjd
+            eimage[0].header['DATE-OBS'] = self.date_obs.isot
+            eimage[0].header['DATE-END'] = self.date_end.isot
+            eimage[0].header['AIRMASS'] = 0
+            eimage[0].header['OBSID'] = visit
+            seed = self.random_seed(visit, chip_id)
+            eimage[0].header['CR_SEED'] = seed
+            eimage[0].data \
+                = self.add_cosmic_rays(eimage[0].data, self.exptime, seed)
+            raw_image \
+                = desc.imsim.ImageSource(eimage[0].data, self.exptime, chip_id,
+                                         visit=visit, logger=logger)
+            raw_image.eimage = eimage
+            raw_image.eimage_data = eimage[0].data
+            raw_image._read_pointing_info(None)
+            raw_file = 'lsst_a_{}_{}.fits'.format(visit, chip_id)
+            raw_image.write_fits_file(raw_file)
+        # Adjust header keywords for calibration product type.
+        with fits.open(raw_file) as raw_frame:
+            hdr = raw_frame[0].header
+            hdr['OBSTYPE'] = 'BIAS' if self.exptime == 0 else 'DARK'
+            hdr['IMGTYPE'] = hdr['OBSTYPE']
+            raw_frame.writeto(raw_file, overwrite=True)
 
     def make(self, ivisit, processes=1):
         """Method to make a dark frame."""
