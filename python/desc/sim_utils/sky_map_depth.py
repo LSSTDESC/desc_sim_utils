@@ -4,6 +4,8 @@ Estimate the depth for skyMap patches for given raw files.
 import os
 import pickle
 import warnings
+from collections import defaultdict
+import matplotlib
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
@@ -25,6 +27,19 @@ class SkyMapDepth:
     """
     def __init__(self, sky_map_file, tract_info_file='tract_info.pkl',
                  camera=None):
+        """
+        Parameters
+        ----------
+        sky_map_file: str
+            Pickle file containing the skyMap.
+        tract_info_file: str ['tract_info.pkl']
+            Pickle file containing the convex polygons for each tract.
+            If it does not exist, then the convex polygons are computed
+            from the skyMap data and then saved as this file.
+        camera: lsst.afw.cameraGeom.camera.Camera [None]
+            Camera object that provides sensor locations in focalplane.
+            If None, then lsst.obs.lsst.lsstCam.LsstCam is used.
+        """
         with open(sky_map_file, 'rb') as fd:
             self.sky_map = pickle.load(fd)
         self.sky_map_polygons \
@@ -34,20 +49,29 @@ class SkyMapDepth:
         self.obs_mds = dict()
         self.detectors = {det.getName(): det for det in self.camera
                           if det.getType() == cameraGeom.SCIENCE}
-        columns = 'tract patch visit detname'.split()
+        columns = 'band tract patch visit detname'.split()
         self.df = pd.DataFrame(columns=columns)
+        self.ra, self.dec, self.visits = None, None, None
 
     def process_raw_files(self, raw_files):
         """
-        Process a set of raw files.
+        Process a set of raw files, adding band, tract, patch, visit,
+        detname info to the internal data frame containing the
+        sensor-visit to patch mappings.
+
+        Parameters
+        ----------
+        raw_files: sequence
+            The raw files to process.  The filenames are assumed to follow
+            the imSim naming convention, i.e.,
+            `lsst_a_<visit>_<raftName>_<detectorName>_<band>.fits`.
         """
         rows = []
-        print('processing:')
         for item in raw_files:
-            print(item)
             # Assuming raw filenames follow the imSim naming convention.
             tokens = os.path.basename(item).split('_')
             visit = int(tokens[2])
+            band = tokens[-1][0]
             if visit not in self.obs_mds:
                 self.obs_mds[visit] = get_obs_md_from_raw(item)
             detname = '_'.join(tokens[3:5])
@@ -56,35 +80,88 @@ class SkyMapDepth:
             tract_info = self.sky_map_polygons.find_overlaps(polygon)
             for tract, patches in tract_info:
                 for patch in patches:
-                    rows.append((tract, '%s,%s' % patch, visit, detname))
+                    rows.append((band, tract, '%s,%s' % patch, visit, detname))
         self.df = self.df.append(pd.DataFrame(rows, columns=self.df.columns),
                                  ignore_index=True)
 
-    def plot_visit_depths(self, bins=None, xy_range=None, ax=None,
-                          figsize=None):
+    def compute_patch_visits(self):
         """
-        Plot a 2D histogram of visits per patch by histogramming patch
-        centers on the sky, weighted by the number of visits per patch.
+        Compute the number of visits per patch for each band.
+        """
+        self.ra = defaultdict(list)
+        self.dec = defaultdict(list)
+        self.visits = defaultdict(list)
+        for band in set(self.df['band']):
+            df_band = self.df.query('band=="%s"' % band)
+            tracts = set(df_band['tract'])
+            for tract in tracts:
+                df_tract = df_band.query('tract==%d' % tract)
+                patches = set(df_tract['patch'])
+                for patch in patches:
+                    ra, dec = get_patch_center(self.sky_map[tract], eval(patch))
+                    self.ra[band].append(ra)
+                    self.dec[band].append(dec)
+                    visits = set(df_tract.query('patch=="%s"' % patch)['visit'])
+                    self.visits[band].append(len(visits))
+
+    def plot_visit_depths(self, band, title=None, ax=None, figsize=None,
+                          cmap_name='plasma'):
+        """
+        Plot number of visits per patch.
+
+        Parameters
+        ----------
+        band: str
+            The ugrizy band to be plotted.
+        title: str [None]
+            The title of the plot. If None, then it will be set to
+            `'# visits per patch, %s-band' % band`.
+        ax: matplotlib.axes._subplots.AxesSubplot [None]
+            The subplot object to contain the tract plot.  If None, then
+            make a new one.
+        figsize: (float, float) [None]
+            Size of the figure in inches.
+        cmap_name: str ['plasma']
+            The name of the colormap to use.
+
+        Returns
+        -------
+        matplotlib.axes._subplots.AxesSubplot
         """
         if ax is None:
             fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(111)
+        if title is None:
+            title = '# visits per patch, %s-band' % band
 
-        tracts = set(self.df['tract'])
-        ras, decs, weights = [], [], []
-        for tract in tracts:
-            df_tract = self.df.query('tract==%d' % tract)
-            patches = set(df_tract['patch'])
-            for patch in patches:
-                ra, dec = get_patch_center(self.sky_map[tract], eval(patch))
-                ras.append(ra)
-                decs.append(dec)
-                weights.append(len(df_tract.query('patch=="%s"' % patch)))
-        plt.hist2d(ras, decs, weights=weights, bins=bins, range=xy_range)
+        cmap = matplotlib.cm.get_cmap(cmap_name)
+        if self.ra is None:
+            self.compute_patch_visits()
+        plt.scatter(self.ra[band], self.dec[band], c=self.visits[band],
+                    cmap=cmap)
+        plt.colorbar()
+        plt.title(title)
+        plt.xlabel('RA (degrees)')
+        plt.ylabel('Dec (degrees)')
         return ax
 
 
 def get_patch_center(tract_info, patch_id):
+    """.
+
+    Compute the coordinates of the center of the patch.
+
+    Parameters
+    ----------
+    tract_info: lsst.skymap.tractInfo.TractInfo
+        The tract info object for the desired tract.
+    patch_id: (int, int)
+        The patch id, e.g., (1, 1).
+
+    Returns
+    -------
+    (float, float): (RA, Dec) in degrees.
+    """
     patch_info = tract_info.getPatchInfo(patch_id)
     patch_box = afw_geom.Box2D(patch_info.getOuterBBox())
     return tract_info.getWcs().pixelToSky(patch_box.getCenter())\
@@ -94,6 +171,15 @@ def get_patch_center(tract_info, patch_id):
 def get_obs_md_from_raw(raw_file):
     """
     Get the ObservationMetaData object from the raw file header info.
+
+    Parameters
+    ----------
+    raw_file: str
+        The path to the raw file.
+
+    Results
+    -------
+    lsst.sims.utils.ObservationMetaData
     """
     with fits.open(raw_file) as fd:
         hdr = fd[0].header
@@ -107,6 +193,20 @@ def get_obs_md_from_raw(raw_file):
 def get_det_polygon(detector, camera, obs_md):
     """
     Compute the convex polygon for a detector for a given observation.
+
+    Parameters
+    ----------
+    detector: lsst.afw.cameraGeom.detector.detector.Detector
+        The detector at issue.
+    camera: lsst.afw.cameraGeom.camera.Camera [None]
+        Camera object that provides sensor locations in focalplane.
+        If None, then lsst.obs.lsst.lsstCam.LsstCam is used.
+    obs_md: lsst.sims.utils.ObservationMetaData
+        The object containing the visit info.
+
+    Returns
+    -------
+    lsst.sphgeom.ConvexPolygon
     """
     corners = getCornerRaDec(detector.getName(), camera, obs_md)
     vertices = []
@@ -156,16 +256,13 @@ class SkyMapPolygons:
 
         Parameters
         ----------
-        box: lsst.afw.geom.Box2[ID]
-            The bounding box of the region.
-        wcs: lsst.afw.image.wcs
-            The WCS to use to convert to a convex polygon.
+        polygon: lsst.sphgeom.ConvexPolygon
+            The polygon representing the bbox at issue.
 
         Returns
         -------
         list of tuples of (tract, list of patches) that overlap the box.
         """
-#        polygon = make_box_wcs_region(box, wcs, margin=margin)
         results = []
         for tract, tract_poly in self.tracts.items():
             if polygon.relate(tract_poly) == lsst.sphgeom.DISJOINT:
