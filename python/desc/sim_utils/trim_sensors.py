@@ -11,7 +11,7 @@ with warnings.catch_warnings():
     from lsst.sims.coordUtils import getCornerRaDec
     from lsst.sims.utils import ObservationMetaData
 
-__all__ = ['Run20Region']
+__all__ = ['Run20Region', 'get_obs_md']
 
 class Run20Region:
     """
@@ -54,26 +54,8 @@ class Run20Region:
                 return True
         return False
 
-    @staticmethod
-    def get_obs_md(instcat):
-        with open(instcat, 'r') as fd:
-            params = dict()
-            for line in fd:
-                if line.startswith('object'):
-                    break
-                tokens = line.strip().split()
-                try:
-                    params[tokens[0]] = float(tokens[1])
-                except ValueError:
-                    pass
-            obs_md = ObservationMetaData(pointingRA=params['rightascension'],
-                                         pointingDec=params['declination'],
-                                         mjd=params['mjd'],
-                                         rotSkyPos=params['rotskypos'])
-        return obs_md
-
     def trim_sensors(self, instcat):
-        obs_md = self.get_obs_md(instcat)
+        obs_md = get_obs_md(instcat)
 
         camera = obs_lsst.LsstCamMapper().camera
 
@@ -97,6 +79,26 @@ class Run20Region:
         ra = np.concatenate((ra1, ra2, ra1[:1]))
         dec = np.concatenate((dec1, dec2, dec1[:1]))
         plt.plot(ra, dec, color=color, linestyle=linestyle)
+
+
+def get_obs_md(instcat):
+    with open(instcat, 'r') as fd:
+        params = dict()
+        for line in fd:
+            if line.startswith('object'):
+                break
+            tokens = line.strip().split()
+            try:
+                params[tokens[0]] = float(tokens[1])
+            except ValueError:
+                pass
+    obs_md = ObservationMetaData(pointingRA=params['rightascension'],
+                                 pointingDec=params['declination'],
+                                 mjd=params['mjd'],
+                                 rotSkyPos=params['rotskypos'])
+    obs_md.OpsimMetaData = dict(obshistid=params['obshistid'])
+    return obs_md
+
 
 if __name__ == '__main__':
     run20_region = Run20Region()
