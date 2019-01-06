@@ -105,7 +105,7 @@ class SkyMapDepth:
                     self.visits[band].append(len(visits))
 
     def plot_visit_depths(self, band, title=None, ax=None, figsize=None,
-                          cmap_name='plasma'):
+                          markersize=None, cmap_name='plasma'):
         """
         Plot number of visits per patch.
 
@@ -121,6 +121,8 @@ class SkyMapDepth:
             make a new one.
         figsize: (float, float) [None]
             Size of the figure in inches.
+        markersize: float [None]
+            If None, then the default is used: `rcParams['lines.markersize']**2`
         cmap_name: str ['plasma']
             The name of the colormap to use.
 
@@ -138,7 +140,7 @@ class SkyMapDepth:
         if self.ra is None:
             self.compute_patch_visits()
         plt.scatter(self.ra[band], self.dec[band], c=self.visits[band],
-                    cmap=cmap)
+                    s=markersize, cmap=cmap)
         plt.colorbar()
         plt.title(title)
         plt.xlabel('RA (degrees)')
@@ -190,6 +192,7 @@ def get_obs_md_from_raw(raw_file):
         obs_md.OpsimMetaData = dict(obshistid=hdr['OBSID'])
     return obs_md
 
+
 def get_det_polygon(detector, camera, obs_md):
     """
     Compute the convex polygon for a detector for a given observation.
@@ -214,6 +217,7 @@ def get_det_polygon(detector, camera, obs_md):
         lonlat = lsst.sphgeom.LonLat.fromDegrees(*corner)
         vertices.append(lsst.sphgeom.UnitVector3d(lonlat))
     return lsst.sphgeom.ConvexPolygon(vertices)
+
 
 class SkyMapPolygons:
     """
