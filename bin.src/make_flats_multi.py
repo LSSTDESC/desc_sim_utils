@@ -21,31 +21,34 @@ class ImSimWcs(galsim.fitswcs.GSFitsWCS):
     """
     def __init__(self, *args, **kwds):
         super(ImSimWcs, self).__init__(*args, **kwds)
-        self._header = dict()
+        self.header = dict()
 
     def set_keywords(self, eimage_file, det_name, obs_md, phot_params):
         """Set the eimage keywords."""
-        self._header['WCSAXES'] = 2
-        self._header['MJD-OBS'] = obs_md.mjd.TAI
-        self._header['DATE-OBS'] \
-            = astropy.time.Time(obs_md.mjd.TAI, format='mjd').isot
-        self._header['EXPTIME'] = phot_params.nexp*phot_params.exptime
-        self._header['RADESYS'] = 'ICRS'
-        self._header['EXTTYPE'] = 'IMAGE'
-        self._header['FILTER'] = obs_md.bandpass
-        self._header['RATEL'] = obs_md.pointingRA
-        self._header['DECTEL'] = obs_md.pointingDec
-        self._header['ROTANGLE'] = obs_md.rotSkyPos
-        self._header['CHIPID'] \
+        self.header['WCSAXES'] = 2
+        self.header['MJD-OBS'] = obs_md.mjd.TAI
+        exptime = phot_params.nexp*phot_params.exptime
+        self.header['EXPTIME'] = exptime
+        date_obs = astropy.time.Time(obs_md.mjd.TAI, format='mjd')
+        self.header['DATE-OBS'] = date_obs.isot
+        date_end = date_obs + astropy.time.TimeDelta(exptime, format='sec')
+        self.header['DATE-END'] = date_end.isot
+        self.header['AIRMASS'] = 0
+        self.header['RADESYS'] = 'ICRS'
+        self.header['EXTTYPE'] = 'IMAGE'
+        self.header['FILTER'] = obs_md.bandpass
+        self.header['RATEL'] = obs_md.pointingRA
+        self.header['DECTEL'] = obs_md.pointingDec
+        self.header['ROTANGLE'] = obs_md.rotSkyPos
+        self.header['CHIPID'] \
             = "R{}_S{}".format(det_name[2:5:2], det_name[8:11:2])
-        self._header['OBSID'] = obs_md.OpsimMetaData['obshistID']
-        self._header['OUTFILE'] = eimage_file
-        self._header['IMGTYPE'] = 'FLAT'
+        self.header['OBSID'] = obs_md.OpsimMetaData['obshistID']
+        self.header['OUTFILE'] = eimage_file
 
     def _writeHeader(self, header, bounds):
         """Re-implementation of the galsim.FitsWCS._writeHeader method."""
         header.update(super(ImSimWcs, self)._writeHeader(header, bounds))
-        header.update(self._header)
+        header.update(self.header)
         return header
 
 
@@ -53,34 +56,47 @@ class FitsWCS(dict):
     """Container class for WCS objects indexed by det_name."""
     def __init__(self, eimage_dir):
         super(FitsWCS, self).__init__()
-        eimages = sorted(glob.glob(os.path.join(eimage_dir, 'lsst_e*fits*')))
-        for eimage in eimages:
-            chipid = fits.open(eimage)[0].header['CHIPID']
+        eimage_files \
+            = sorted(glob.glob(os.path.join(eimage_dir, 'lsst_e*fits*')))
+        for eimage_file in eimage_files:
+            with fits.open(eimage_file) as hdulist:
+                chipid = hdulist[0].header['CHIPID']
             det_name = "R:{},{} S:{},{}".format(*tuple(x for x in chipid
                                                        if x.isdigit()))
-            self[det_name] = ImSimWcs(eimage)
+            self[det_name] = ImSimWcs(eimage_file)
+            self[det_name].eimage_file = eimage_file
 
-
-def make_sensor_flat(det_name, wcs, counts_per_iter, niter, rng):
+def make_sensor_flat(det_name, wcs, counts_per_iter, niter, rng,
+                     overwrite=True):
     """Pickleable function to use with multiprocessing module."""
     global camera_wrapper, phot_params, obs_md
+    logger = desc.imsim.get_logger('INFO', name=det_name)
 
     visit = obs_md.OpsimMetaData['obshistID']
     ccd_id = "R{}_S{}".format(det_name[2:5:2], det_name[8:11:2])
-    outfile = 'lsst_e_{}_{}_{}.fits'.format(visit, ccd_id, obs_md.bandpass)
-    if os.path.isfile(outfile + '.gz'):
+    outfile = 'lsst_a_{}_{}_{}.fits'.format(visit, ccd_id, obs_md.bandpass)
+    if not overwrite and os.path.isfile(outfile):
+        logger.info("%s exists. Skipping.", outfile)
         return
 
-    print("running", det_name)
+    logger.info("running %s", det_name)
     gs_det = make_galsim_detector(camera_wrapper, det_name, phot_params, obs_md)
 
     desc.imsim.add_treering_info([gs_det])
-    logger = desc.imsim.get_logger('INFO', name=det_name)
 
     wcs.set_keywords(outfile, det_name, obs_md, phot_params)
     my_flat = desc.imsim.make_flat(gs_det, counts_per_iter, niter, rng,
                                    logger=logger, wcs=wcs)
-    my_flat.write(outfile)
+
+    exptime = wcs.header['EXPTIME']
+    with fits.open(wcs.eimage_file) as eimage:
+        eimage[0].header.update(wcs.header)
+        eimage[0].data = my_flat.array
+        raw_image = desc.imsim.ImageSource(eimage[0].data, exptime, ccd_id)
+        raw_image.eimage = eimage
+        raw_image.eimage_data = eimage[0].data
+        raw_image._read_pointing_info(None)
+        raw_image.write_fits_file(outfile, image_type='FLAT')
 
 if __name__ == '__main__':
     import argparse
