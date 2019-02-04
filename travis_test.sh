@@ -7,7 +7,8 @@ pip install coveralls
 git clone https://github.com/lsst/obs_lsst.git
 cd obs_lsst
 setup -r . -j
-scons
+git checkout imsim-dc2-run2.1-test
+scons lib python shebang examples doc policy python/lsst/obs/lsst/version.py
 cd ..
 eups declare desc_sim_utils -r ${TRAVIS_BUILD_DIR} -t current
 setup desc_sim_utils
