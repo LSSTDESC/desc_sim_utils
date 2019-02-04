@@ -53,13 +53,8 @@ class DarkFrames:
             raw_image.eimage_data = eimage[0].data
             raw_image._read_pointing_info(None)
             raw_file = 'lsst_a_{}_{}.fits'.format(visit, chip_id)
-            raw_image.write_fits_file(raw_file)
-        # Adjust header keywords for calibration product type.
-        with fits.open(raw_file) as raw_frame:
-            hdr = raw_frame[0].header
-            hdr['OBSTYPE'] = 'BIAS' if self.exptime == 0 else 'DARK'
-            hdr['IMGTYPE'] = hdr['OBSTYPE']
-            raw_frame.writeto(raw_file, overwrite=True)
+            image_type = 'BIAS' if self.exptime == 0 else 'DARK'
+            raw_image.write_fits_file(raw_file, image_type=image_type)
 
     def make(self, ivisit, processes=1):
         """Method to make a dark frame."""
