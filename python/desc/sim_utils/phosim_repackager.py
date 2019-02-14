@@ -99,25 +99,6 @@ class PhoSimRepackager:
         phosim_amp_files: list
             List of phosim amplifier filenames.
         """
-        # PhoSim labels the amplifier channels incorrectly.  Here is a
-        # mapping from the phosim channels to the correct ones.
-        ch_map = {'00': '10',
-                  '01': '11',
-                  '02': '12',
-                  '03': '13',
-                  '04': '14',
-                  '05': '15',
-                  '06': '16',
-                  '07': '17',
-                  '17': '07',
-                  '16': '06',
-                  '15': '05',
-                  '14': '04',
-                  '13': '03',
-                  '12': '02',
-                  '11': '01',
-                  '10': '00'}
-
         # Create the HDUList to contain the MEF data.
         phdu = fits.PrimaryHDU()
         sensor = fits.HDUList(phdu)
@@ -137,12 +118,11 @@ class PhoSimRepackager:
                                         append=True)
                 with fits.open(fn) as phosim_amp:
                     # Use tile compression for the pixel data.
-                    segments[ch_map[phosim_channel]] \
+                    segments[phosim_channel] \
                         = fits.CompImageHDU(data=phosim_amp[0].data,
                                             compression_type='RICE_1')
                     # Copy the header keywords from the original file.
-                    segments[ch_map[phosim_channel]]\
-                        .header.update(phosim_amp[0].header)
+                    segments[phosim_channel].header.update(phosim_amp[0].header)
 
         # Set the NOAO section keywords based on the pixel geometry
         # in the LsstCam object.
