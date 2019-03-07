@@ -168,7 +168,10 @@ class PhoSimRepackager:
         # infer the CCD-wide WCS.
         phdu.header['RATEL'] = amp_hdr['RA_DEG']
         phdu.header['DECTEL'] = amp_hdr['DEC_DEG']
-        phdu.header['ROTANGLE'] = amp_hdr['ROTANGZ']
+        try:
+            phdu.header['ROTANGLE'] = amp_hdr['ROTANGZ']
+        except KeyError:
+            phdu.header['ROTANGLE'] = amp_hdr['ROTANG']
 
         outfile = self.mef_filename(phosim_amp_files[0], out_dir=out_dir)
         sensor.writeto(outfile, overwrite=True)
