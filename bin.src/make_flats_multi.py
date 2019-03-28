@@ -116,6 +116,10 @@ if __name__ == '__main__':
                         'will be used.')
     parser.add_argument('--exptime', type=float, default=10.,
                         help='flat exposure time in seconds. Default: 10')
+    parser.add_argument('--sensors', type=str, default=None,
+                        help='sensors to simulate, delimited by "^", e.g.,'
+                        '"R:2,2 S:1,1^R:2,2 S:1,2".  If None, then all of the '
+                        'science sensors will be simulated.')
     args = parser.parse_args()
 
     header_dir = args.header_dir
@@ -133,6 +137,8 @@ if __name__ == '__main__':
     phot_params._exptime = args.exptime
     obs_md.OpsimMetaData['obshistID'] = args.visit
 
+    sensors = args.sensors.split('^') if args.sensors is not None else None
+
     camera_wrapper = LSSTCameraWrapper()
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', 'ERFA function', ErfaWarning)
@@ -143,6 +149,8 @@ if __name__ == '__main__':
             for i, det in enumerate(camera_wrapper.camera):
                 det_name = det.getName()
                 if det.getType() != cameraGeom.SCIENCE:
+                    continue
+                if sensors is not None and det_name not in sensors:
                     continue
                 wcs = fits_wcs[det_name]
                 rng = galsim.UniformDeviate(args.visit + i)
