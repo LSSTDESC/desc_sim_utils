@@ -92,7 +92,8 @@ def make_sensor_flat(det_name, wcs, counts_per_iter, niter, rng,
     with fits.open(wcs.eimage_file) as eimage:
         eimage[0].header.update(wcs.header)
         eimage[0].data = my_flat.array
-        raw_image = desc.imsim.ImageSource(eimage[0].data, exptime, ccd_id)
+        raw_image = desc.imsim.ImageSource(eimage[0].data, exptime, ccd_id,
+                                           visit=visit)
         raw_image.eimage = eimage
         raw_image.eimage_data = eimage[0].data
         raw_image._read_pointing_info(None)
