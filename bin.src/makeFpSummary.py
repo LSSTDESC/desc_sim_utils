@@ -59,6 +59,7 @@ class FocalplaneSummaryConfig(pexConfig.Config):
     """)
     allowFitsCompression = pexConfig.Field(dtype=bool, default=False,
                                            doc="allow FITS files to be written with compression?")
+    doApplySkyCorr = pexConfig.Field(dtype=bool, default=False, doc="apply sky correction")
 
     def validate(self):
         if self.putFullSensors and not self.doSensorImages:
@@ -88,6 +89,8 @@ class FocalplaneSummaryTask(pipeBase.CmdLineTask):
                 return cgu.rawCallback(im, ccd, imageSource, correctGain=True, subtractBias=True)
         elif dstype == "eimage":
             callback = eimageCallback
+        elif self.config.doApplySkyCorr:
+            callback = skyCorrCallback
         else:
             callback = None
 
@@ -182,6 +185,38 @@ def eimageCallback(im, ccd=None, imageSource=None):
     im = flipImage(im, True, False)
 
     return im
+
+
+def skyCorrCallback(im, ccd, imageSource=None):
+    """
+    Callback function to apply sky correction to calexps.
+
+    Parameters
+    ----------
+    im : `lsst.afw.image.Image` or `lsst.afw.image.MaskedImage` or `lsst.afw.image.Exposure`
+        An image of a chip, ready to be binned and maybe rotated.
+    ccd : `lsst.afw.cameraGeom.Detector` or `None`
+        The Detector; if `None` assume that im is an exposure and extract its Detector.
+    imageSource : `ButlerImage`
+        Source to get ccd images.  The `.butler` attribute is used to retrieve the skyCorr image.
+
+    Returns
+    -------
+    image : `lsst.afw.image.Image` like
+        The constructed image (type returned by ``im.Factory``).
+    """
+    if ccd is None:
+        ccd = im.getDetector()
+
+    if isinstance(im, afwImage.Exposure):
+        im = im.getMaskedImage()
+
+    # Apply sky correction to a local copy of the image.
+    my_image = im.Factory(im, deep=True)
+    dataId = dict(visit=imageSource.kwargs['visit'], detector=ccd.getId())
+    bg = imageSource.butler.get('skyCorr', dataId=dataId)
+    my_image -= bg.getImage()
+    return my_image
 
 
 if __name__ == "__main__":
