@@ -16,10 +16,30 @@ import lsst.sphgeom
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
     from lsst.sims.coordUtils import getCornerRaDec
+    from lsst.sims.catUtils.utils import ObservationMetaDataGenerator
     from lsst.sims.utils import ObservationMetaData
 
-__all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region']
+__all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region',
+           'DescOpsimDbParams']
 
+
+class DescOpsimDbParams:
+    def __init__(self, opsim_db_file):
+        self.conn = sqlite3.connect(opsim_db_file)
+    def update_obs_md(self, obs_md, visit):
+        """
+        Update the obs_md object with the DESC dithered versions
+        of pointing parameters.
+        """
+        query = '''select descDitheredRA, descDitheredDec,
+                   descDitheredRotTelPos from summary
+                   where obshistid={}'''.format(visit)
+        curs = self.conn.execute(query)
+        ra, dec, rottelpos = [np.degrees(_) for _ in curs][0]
+        obs_md.pointingRA = ra
+        obs_md.pointingDec = dec
+        obs_md.rotSkyPos = getRotSkyPos(ra, dec, obs_md, rottelpos)
+        return obs_md
 
 class SkyMapDepth:
     """
@@ -52,6 +72,39 @@ class SkyMapDepth:
         columns = 'band tract patch visit detname'.split()
         self.df = pd.DataFrame(columns=columns)
         self.ra, self.dec, self.visits = None, None, None
+
+    def process_registry_file(self, registry_file, opsim_db, constraint=None):
+        """
+        Process a data repo registry file, applying an optional
+        constraint on the query for entries.
+        """
+        obs_gen = ObservationMetaDataGenerator(database=opsim_db,
+                                               driver='sqlite')
+        desc_opsim_db_params = DescOpsimDbParams(opsim_db)
+        rows = []
+        query = 'select visit, filter, raftName, detectorName from raw'
+        if constraint is not None:
+            query += ' where {}'.format(constraint)
+        with sqlite3.connect(registry_file) as conn:
+            df = pd.read_sql(query, conn)
+        for iloc in range(len(df)):
+            row = df.iloc[iloc]
+            visit = row.visit
+            if visit not in self.obs_mds:
+                obs_md = obs_gen.getObservationMetaData(obsHistID=visit,
+                                                        boundType='circle',
+                                                        boundLength=0)[0]
+                self.obs_mds[visit] \
+                    = desc_opsim_db_params.update_obs_md(obs_md, visit)
+            det_name = '_'.join((row.raftName, row.detectorName))
+            det = self.detectors[detname]
+            polygon = get_det_polygon(det, self.camera, self.obs_mds[visit])
+            tract_info = self.sky_map_polygons.find_overlaps(polygon)
+            for tract, patches in tract_info:
+                for patch in patches:
+                    rows.append((band, tract, '%s,%s' % patch, visit, detname))
+        self.df = self.df.append(pd.DataFrame(rows, columns=self.df.columns),
+                                 ignore_index=True)
 
     def process_raw_files(self, raw_files):
         """
