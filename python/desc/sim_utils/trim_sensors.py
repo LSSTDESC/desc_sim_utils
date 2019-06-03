@@ -72,7 +72,7 @@ class Run20Region:
 
     def plot_boundary(self, color='blue', linestyle='--'):
         import matplotlib.pyplot as plt
-        dec1 = np.linspace(-44.33, -27.25, 100)
+        dec1 = np.linspace(self._dec_range[0], self._dec_range[1], 100)
         dec2 = dec1[-1::-1]
         ra1 = self._ra_mid - self._dra(dec1)
         ra2 = self._ra_mid + self._dra(dec2)
