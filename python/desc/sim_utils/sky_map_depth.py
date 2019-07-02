@@ -2,9 +2,12 @@
 Estimate the depth for skyMap patches for given raw files.
 """
 import os
+import sys
 import pickle
 import warnings
 from collections import defaultdict
+import sqlite3
+import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -16,10 +19,30 @@ import lsst.sphgeom
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
     from lsst.sims.coordUtils import getCornerRaDec
-    from lsst.sims.utils import ObservationMetaData
+    from lsst.sims.catUtils.utils import ObservationMetaDataGenerator
+    from lsst.sims.utils import ObservationMetaData, getRotSkyPos
 
-__all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region']
+__all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region',
+           'DescOpsimDbParams', 'get_det_polygon', 'process_registry_file']
 
+
+class DescOpsimDbParams:
+    def __init__(self, opsim_db_file):
+        self.conn = sqlite3.connect(opsim_db_file)
+    def update_obs_md(self, obs_md, visit):
+        """
+        Update the obs_md object with the DESC dithered versions
+        of pointing parameters.
+        """
+        query = '''select descDitheredRA, descDitheredDec,
+                   descDitheredRotTelPos from summary
+                   where obshistid={}'''.format(visit)
+        curs = self.conn.execute(query)
+        ra, dec, rottelpos = [np.degrees(_) for _ in curs][0]
+        obs_md.pointingRA = ra
+        obs_md.pointingDec = dec
+        obs_md.rotSkyPos = getRotSkyPos(ra, dec, obs_md, rottelpos)
+        return obs_md
 
 class SkyMapDepth:
     """
@@ -52,6 +75,35 @@ class SkyMapDepth:
         columns = 'band tract patch visit detname'.split()
         self.df = pd.DataFrame(columns=columns)
         self.ra, self.dec, self.visits = None, None, None
+
+    def process_registry_file(self, registry_file, opsim_db, constraint=None,
+                              row_bounds=None):
+        """
+        Process a data repo registry file, applying an optional
+        constraint on the query for entries.
+
+        Parameters
+        ----------
+        registry_file: str
+            registry.sqlite3 file for a DM data repo.
+        opsim_db: str
+            Opsim database sqlite3 file.  Must be modified with DESC dithered
+            pointing info.
+        sky_map_polygons: desc.sim_utils.SkyMapPolygons
+            Collection of convex polygons corresponding to the tracts and
+            patches in the associated sky map.
+        constraint: str [None]
+            sqlite3 constraint on the selection of rows from the raw table
+            in registry.sqlite3 file.
+        row_bounds: (int, int) [None]
+            Minimum and maximum row to process from the query of the raw
+            table in the registry file. If None, then process all rows.
+        """
+        self.df = process_registry_file(registry_file, opsim_db,
+                                        self.sky_map_polygons,
+                                        constraint=constraint,
+                                        row_bounds=row_bounds,
+                                        camera=self.camera)
 
     def process_raw_files(self, raw_files):
         """
@@ -321,3 +373,75 @@ def make_box_wcs_region(box, wcs, margin=0.0):
                                                  coord.getDec().asRadians())
         vertices.append(lsst.sphgeom.UnitVector3d(lonlat))
     return lsst.sphgeom.ConvexPolygon(vertices)
+
+
+def process_registry_file(registry_file, opsim_db, sky_map_polygons,
+                          constraint=None, row_bounds=None, camera=None):
+    """
+    Process a data repo registry file to obtain the sensor visit overlaps
+    sky map tracts and patches.
+
+    Parameters
+    ----------
+    registry_file: str
+        registry.sqlite3 file for a DM data repo.
+    opsim_db: str
+        Opsim database sqlite3 file.  Must be modified with DESC dithered
+        pointing info.
+    sky_map_polygons: desc.sim_utils.SkyMapPolygons
+        Collection of convex polygons corresponding to the tracts and
+        patches in the associated sky map.
+    constraint: str [None]
+        sqlite3 constraint on the selection of rows from the raw table
+        in registry.sqlite3 file.
+    row_bounds: (int, int) [None]
+        Minimum and maximum row to process from the query of the raw table
+        in the registry file. If None, then process all rows.
+    camera: lsst.afw.cameraGeom.Camera [None]
+        Camera object. If None, then use `lsst.obs.lsst.LsstMapper().camera`.
+
+    Returns
+    -------
+    pandas DataFrame
+    """
+    if camera is None:
+        camera = obs_lsst.LsstCamMapper().camera
+    obs_gen = ObservationMetaDataGenerator(database=opsim_db, driver='sqlite')
+    desc_opsim_db_params = DescOpsimDbParams(opsim_db)
+    rows = []
+    query = 'select visit, filter, raftName, detectorName from raw'
+    if constraint is not None:
+        query += ' where {}'.format(constraint)
+    with sqlite3.connect(registry_file) as conn:
+        registry = pd.read_sql(query, conn)
+    nrows = len(registry)
+    print("processing {} rows from {}".format(nrows, registry_file))
+    sys.stdout.flush()
+    obs_mds = dict()
+    detectors = {det.getName(): det for det in camera
+                 if det.getType() == cameraGeom.SCIENCE}
+
+    df = pd.DataFrame(columns='band tract patch visit detname'.split())
+    if row_bounds is not None:
+        rmin = row_bounds[0]
+        rmax = min(row_bounds[1], nrows)
+    for iloc in range(rmin, rmax):
+        print('{} / {}'.format(iloc, rmax - rmin))
+        sys.stdout.flush()
+        row = registry.iloc[iloc]
+        visit = row['visit']
+        band = row['filter']
+        if visit not in obs_mds:
+            obs_md = obs_gen.getObservationMetaData(obsHistID=visit,
+                                                    boundType='circle',
+                                                    boundLength=0)[0]
+            obs_mds[visit] = desc_opsim_db_params.update_obs_md(obs_md, visit)
+        detname = '_'.join((row['raftName'], row['detectorName']))
+        det = detectors[detname]
+        polygon = get_det_polygon(det,camera, obs_mds[visit])
+        tract_info = sky_map_polygons.find_overlaps(polygon)
+        for tract, patches in tract_info:
+            for patch in patches:
+                rows.append((band, tract, '%s,%s' % patch, visit, detname))
+    df = df.append(pd.DataFrame(rows, columns=df.columns), ignore_index=True)
+    return df
