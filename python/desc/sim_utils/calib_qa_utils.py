@@ -7,7 +7,7 @@ import pickle
 import multiprocessing
 import numpy as np
 import matplotlib.pyplot as plt
-import lsst.afw.geom as afw_geom
+import lsst.geom as lsst_geom
 import lsst.afw.math as afw_math
 import lsst.daf.persistence as dp
 
@@ -37,7 +37,7 @@ def get_overscan_stats(image, amp_info):
     image_corners = image.getBBox().getCorners()
     # Create a bounding box using the upper left corner of the full
     # segment to guard against non-standard overscan region sizes.
-    bbox = afw_geom.Box2I(oscan_corners[0], image_corners[2])
+    bbox = lsst_geom.Box2I(oscan_corners[0], image_corners[2])
     oscan = image.Factory(image, bbox)
     stats = afw_math.makeStatistics(oscan, afw_math.MEAN | afw_math.STDEV)
     return stats.getValue(afw_math.MEAN), stats.getValue(afw_math.STDEV)

@@ -12,7 +12,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
-import lsst.afw.geom as afw_geom
+import lsst.geom as lsst_geom
 from lsst.afw import cameraGeom
 import lsst.obs.lsst as obs_lsst
 import lsst.sphgeom
@@ -217,9 +217,9 @@ def get_patch_center(tract_info, patch_id):
     (float, float): (RA, Dec) in degrees.
     """
     patch_info = tract_info.getPatchInfo(patch_id)
-    patch_box = afw_geom.Box2D(patch_info.getOuterBBox())
+    patch_box = lsst_geom.Box2D(patch_info.getOuterBBox())
     return tract_info.getWcs().pixelToSky(patch_box.getCenter())\
-                              .getPosition(afw_geom.degrees)
+                              .getPosition(lsst_geom.degrees)
 
 
 def get_obs_md_from_raw(raw_file):
@@ -352,7 +352,7 @@ def make_box_wcs_region(box, wcs, margin=0.0):
 
     Parameters
     ----------
-    box: lsst.afw.geom.Box2I or lsst.afw.geom.Box2D
+    box: lsst.geom.Box2I or lsst.geom.Box2D
         A box in the pixel coordinate system defined by the WCS.
     wcs: lsst.afw.image.Wcs
         A mapping from a pixel coordinate system to the sky.
@@ -364,7 +364,7 @@ def make_box_wcs_region(box, wcs, margin=0.0):
     -------
     lsst.sphgeom.ConvexPolygon
     """
-    box = afw_geom.Box2D(box)
+    box = lsst_geom.Box2D(box)
     box.grow(margin)
     vertices = []
     for point in box.getCorners():
