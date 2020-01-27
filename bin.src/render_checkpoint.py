@@ -9,7 +9,7 @@ from lsst.sims.GalSimInterface import (make_gs_interpreter,
 import desc.imsim
 
 
-def render_checkpoint(instcat, checkpoint_file):
+def render_checkpoint(instcat, checkpoint_file, create_eimage=False):
     """
     Render a checkpoint file as a raw file.
     """
@@ -31,16 +31,23 @@ def render_checkpoint(instcat, checkpoint_file):
     desc.imsim.apply_channel_bleeding(gs_interpreter, full_well)
 
     visit = obs_md.OpsimMetaData['obshistID']
-    name_root = 'lsst_a_{}'.format(visit)
+    name_root = f'lsst_a_{visit}'
     for name, gs_image in gs_interpreter.detectorImages.items():
         raw = desc.imsim.ImageSource.create_from_galsim_image(gs_image)
         outfile = '_'.join((name_root, name))
         raw.write_fits_file(outfile, compress=True)
 
+    if create_eimage:
+        name_root = f'lsst_e_{visit}'
+        gs_interpreter.writeImages(nameRoot=name_root)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('instcat', type=str, help='instance catalog')
     parser.add_argument('checkpoint_file', type=str, help='checkpoint file')
+    parser.add_argument('--create_eimage', default=False, action='store_true',
+                        help='create an eimage file')
     args = parser.parse_args()
 
-    render_checkpoint(args.instcat, args.checkpoint_file)
+    render_checkpoint(args.instcat, args.checkpoint_file,
+                      create_eimage=args.create_eimage)
