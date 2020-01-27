@@ -22,7 +22,7 @@ def noao_section_keyword(bbox, flipx=False, flipy=False):
 
     Parameters
     ----------
-    bbox : lsst.afw.geom.Box2I
+    bbox : lsst.geom.Box2I
         Bounding box.
     flipx : bool
         Flag to indicate that data should be flipped in the x-direction.

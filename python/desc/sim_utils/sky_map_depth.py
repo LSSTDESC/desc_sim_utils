@@ -12,7 +12,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
-import lsst.afw.geom as afw_geom
+import lsst.geom as lsst_geom
 from lsst.afw import cameraGeom
 import lsst.obs.lsst as obs_lsst
 import lsst.sphgeom
@@ -157,7 +157,7 @@ class SkyMapDepth:
                     self.visits[band].append(len(visits))
 
     def plot_visit_depths(self, band, title=None, ax=None, figsize=None,
-                          markersize=None, cmap_name='plasma'):
+                          markersize=None, use_log10=False, cmap_name='plasma'):
         """
         Plot number of visits per patch.
 
@@ -175,6 +175,8 @@ class SkyMapDepth:
             Size of the figure in inches.
         markersize: float [None]
             If None, then the default is used: `rcParams['lines.markersize']**2`
+        use_log10: bool [False]
+            Flag to use log10 of map values.
         cmap_name: str ['plasma']
             The name of the colormap to use.
 
@@ -191,12 +193,27 @@ class SkyMapDepth:
         cmap = matplotlib.cm.get_cmap(cmap_name)
         if self.ra is None:
             self.compute_patch_visits()
-        plt.scatter(self.ra[band], self.dec[band], c=self.visits[band],
-                    s=markersize, cmap=cmap)
-        plt.colorbar()
+        ra = np.array(self.ra[band])
+        dec = np.array(self.dec[band])
+        visits = np.array(self.visits[band])
+        if use_log10:
+            index = np.where(visits >= 1)
+            ra = ra[index]
+            dec = dec[index]
+            visits = np.log10(visits[index])
+        plt.scatter(ra, dec, c=visits, s=markersize, cmap=cmap)
+        colorbar = plt.colorbar()
+        if use_log10:
+            ticks = sorted(list(set(
+                [int(_) for _ in np.log10(np.logspace(0, max(visits)))])))
+            ticklabels = [10**_ for _ in ticks]
+            colorbar.set_ticks(ticks)
+            colorbar.set_ticklabels(ticklabels)
         plt.title(title)
         plt.xlabel('RA (degrees)')
         plt.ylabel('Dec (degrees)')
+        xlims = plt.axis()[:2]
+        ax.set_xlim(xlims[1], xlims[0])
         return ax
 
 
@@ -217,9 +234,9 @@ def get_patch_center(tract_info, patch_id):
     (float, float): (RA, Dec) in degrees.
     """
     patch_info = tract_info.getPatchInfo(patch_id)
-    patch_box = afw_geom.Box2D(patch_info.getOuterBBox())
+    patch_box = lsst_geom.Box2D(patch_info.getOuterBBox())
     return tract_info.getWcs().pixelToSky(patch_box.getCenter())\
-                              .getPosition(afw_geom.degrees)
+                              .getPosition(lsst_geom.degrees)
 
 
 def get_obs_md_from_raw(raw_file):
@@ -352,7 +369,7 @@ def make_box_wcs_region(box, wcs, margin=0.0):
 
     Parameters
     ----------
-    box: lsst.afw.geom.Box2I or lsst.afw.geom.Box2D
+    box: lsst.geom.Box2I or lsst.geom.Box2D
         A box in the pixel coordinate system defined by the WCS.
     wcs: lsst.afw.image.Wcs
         A mapping from a pixel coordinate system to the sky.
@@ -364,7 +381,7 @@ def make_box_wcs_region(box, wcs, margin=0.0):
     -------
     lsst.sphgeom.ConvexPolygon
     """
-    box = afw_geom.Box2D(box)
+    box = lsst_geom.Box2D(box)
     box.grow(margin)
     vertices = []
     for point in box.getCorners():
