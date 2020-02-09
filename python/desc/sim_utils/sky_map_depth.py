@@ -22,27 +22,32 @@ with warnings.catch_warnings():
     from lsst.sims.catUtils.utils import ObservationMetaDataGenerator
     from lsst.sims.utils import ObservationMetaData, getRotSkyPos
 
+
 __all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region',
-           'DescOpsimDbParams', 'get_det_polygon', 'process_registry_file']
+           'DescObsMdGenerator', 'get_det_polygon', 'process_registry_file']
 
 
-class DescOpsimDbParams:
+class DescObsMdGenerator:
     def __init__(self, opsim_db_file):
-        self.conn = sqlite3.connect(opsim_db_file)
-    def update_obs_md(self, obs_md, visit):
-        """
-        Update the obs_md object with the DESC dithered versions
-        of pointing parameters.
-        """
-        query = '''select descDitheredRA, descDitheredDec,
-                   descDitheredRotTelPos from summary
-                   where obshistid={}'''.format(visit)
-        curs = self.conn.execute(query)
-        ra, dec, rottelpos = [np.degrees(_) for _ in curs][0]
+        self.obs_gen = ObservationMetaDataGenerator(database=opsim_db_file,
+                                                    driver='sqlite')
+        self.opsim_db_file = opsim_db_file
+
+    def create(self, visit):
+        obs_md = self.obs_gen.getObservationMetaData(obsHistID=visit,
+                                                     boundType='circle',
+                                                     boundLength=0)[0]
+        query = f'''select descDitheredRA, descDitheredDec,
+                    descDitheredRotTelPos from summary where
+                    obsHistID={visit}'''
+        with sqlite3.connect(self.opsim_db_file) as conn:
+            curs = conn.execute(query)
+            ra, dec, rottelpos = [np.degrees(_) for _ in curs][0]
         obs_md.pointingRA = ra
         obs_md.pointingDec = dec
         obs_md.rotSkyPos = getRotSkyPos(ra, dec, obs_md, rottelpos)
         return obs_md
+
 
 class SkyMapDepth:
     """
@@ -423,8 +428,7 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     """
     if camera is None:
         camera = obs_lsst.LsstCamMapper().camera
-    obs_gen = ObservationMetaDataGenerator(database=opsim_db, driver='sqlite')
-    desc_opsim_db_params = DescOpsimDbParams(opsim_db)
+    desc_obs_gen = DescObsMdGenerator(opsim_db)
     rows = []
     query = 'select visit, filter, raftName, detectorName from raw'
     if constraint is not None:
@@ -449,10 +453,7 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
         visit = row['visit']
         band = row['filter']
         if visit not in obs_mds:
-            obs_md = obs_gen.getObservationMetaData(obsHistID=visit,
-                                                    boundType='circle',
-                                                    boundLength=0)[0]
-            obs_mds[visit] = desc_opsim_db_params.update_obs_md(obs_md, visit)
+            obs_mds[visit] = desc_obs_gen.create(visit)
         detname = '_'.join((row['raftName'], row['detectorName']))
         det = detectors[detname]
         polygon = get_det_polygon(det,camera, obs_mds[visit])
