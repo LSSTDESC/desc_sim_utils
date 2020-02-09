@@ -11,7 +11,9 @@ with warnings.catch_warnings():
     from lsst.sims.coordUtils import getCornerRaDec
     from lsst.sims.utils import ObservationMetaData
 
+
 __all__ = ['Run20Region', 'get_obs_md']
+
 
 class Run20Region:
     """
@@ -54,8 +56,11 @@ class Run20Region:
                 return True
         return False
 
-    def trim_sensors(self, instcat):
-        obs_md = get_obs_md(instcat)
+    def trim_sensors(self, instcat_or_obs_md):
+        if isinstance(instcat_or_obs_md, ObservationMetaData):
+            obs_md = instcat_or_obs_md
+        else:
+            obs_md = get_obs_md(instcat_or_obs_md)
 
         camera = obs_lsst.LsstCamMapper().camera
 
