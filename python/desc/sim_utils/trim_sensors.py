@@ -5,6 +5,7 @@ given visit.
 import warnings
 import numpy as np
 from lsst.afw import cameraGeom
+import lsst.sims.coordUtils
 import lsst.obs.lsst as obs_lsst
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
@@ -62,7 +63,8 @@ class Run20Region:
         else:
             obs_md = get_obs_md(instcat_or_obs_md)
 
-        camera = obs_lsst.LsstCamMapper().camera
+        #camera = obs_lsst.LsstCamMapper().camera
+        camera = lsst.sims.coordUtils.lsst_camera()
 
         sensors = []
         for det in list(camera):
