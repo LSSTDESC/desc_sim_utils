@@ -14,6 +14,7 @@ from astropy.io import fits
 import pandas as pd
 import lsst.geom as lsst_geom
 from lsst.afw import cameraGeom
+import lsst.sim.coordUtils
 import lsst.obs.lsst as obs_lsst
 import lsst.sphgeom
 with warnings.catch_warnings():
@@ -427,7 +428,8 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     pandas DataFrame
     """
     if camera is None:
-        camera = obs_lsst.LsstCamMapper().camera
+        #camera = obs_lsst.LsstCamMapper().camera
+        camera = lsst.sims.coordUtils.lsst_camera()
     desc_obs_gen = DescObsMdGenerator(opsim_db)
     rows = []
     query = 'select visit, filter, raftName, detectorName from raw'
@@ -456,7 +458,7 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
             obs_mds[visit] = desc_obs_gen.create(visit)
         detname = '_'.join((row['raftName'], row['detectorName']))
         det = detectors[detname]
-        polygon = get_det_polygon(det,camera, obs_mds[visit])
+        polygon = get_det_polygon(det, camera, obs_mds[visit])
         tract_info = sky_map_polygons.find_overlaps(polygon)
         for tract, patches in tract_info:
             for patch in patches:
