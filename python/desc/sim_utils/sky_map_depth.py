@@ -14,7 +14,7 @@ from astropy.io import fits
 import pandas as pd
 import lsst.geom as lsst_geom
 from lsst.afw import cameraGeom
-import lsst.sim.coordUtils
+import lsst.sims.coordUtils
 import lsst.obs.lsst as obs_lsst
 import lsst.sphgeom
 with warnings.catch_warnings():
@@ -398,6 +398,10 @@ def make_box_wcs_region(box, wcs, margin=0.0):
     return lsst.sphgeom.ConvexPolygon(vertices)
 
 
+def reformat_sims_detname(detname):
+    return 'R{}{}_S{}{}'.format(*[_ for _ in detname if _.isdigit()])
+
+
 def process_registry_file(registry_file, opsim_db, sky_map_polygons,
                           constraint=None, row_bounds=None, camera=None):
     """
@@ -441,7 +445,7 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     print("processing {} rows from {}".format(nrows, registry_file))
     sys.stdout.flush()
     obs_mds = dict()
-    detectors = {det.getName(): det for det in camera
+    detectors = {reformat_sims_detname(det.getName()): det for det in camera
                  if det.getType() == cameraGeom.SCIENCE}
 
     df = pd.DataFrame(columns='band tract patch visit detname'.split())
