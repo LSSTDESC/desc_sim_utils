@@ -136,7 +136,7 @@ class SkyMapDepth:
         self.df = self.df.append(pd.DataFrame(rows, columns=self.df.columns),
                                  ignore_index=True)
 
-    def compute_patch_visits(self):
+    def compute_patch_visits(self, visit_range=None):
         """
         Compute the number of visits per patch for each band.
         """
@@ -154,6 +154,9 @@ class SkyMapDepth:
                     self.ra[band].append(ra)
                     self.dec[band].append(dec)
                     visits = set(df_tract.query('patch=="%s"' % patch)['visit'])
+                    if visit_range is not None:
+                        visits = set(_ for _ in visits
+                                     if visit_range[0] <= _ <= visit_range[1])
                     self.visits[band].append(len(visits))
 
     def plot_visit_depths(self, band, title=None, ax=None, figsize=None,
@@ -432,8 +435,6 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     with sqlite3.connect(registry_file) as conn:
         registry = pd.read_sql(query, conn)
     nrows = len(registry)
-    print("processing {} rows from {}".format(nrows, registry_file))
-    sys.stdout.flush()
     obs_mds = dict()
     detectors = {det.getName(): det for det in camera
                  if det.getType() == cameraGeom.SCIENCE}
@@ -442,9 +443,14 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     if row_bounds is not None:
         rmin = row_bounds[0]
         rmax = min(row_bounds[1], nrows)
+    else:
+        rmin = 0
+        rmax = nrows
+    print("processing {} rows from {}".format(rmax - rmin, registry_file))
+    sys.stdout.flush()
     for iloc in range(rmin, rmax):
-        print('{} / {}'.format(iloc, rmax - rmin))
-        sys.stdout.flush()
+#        print('{} / {}'.format(iloc, rmax - rmin))
+#        sys.stdout.flush()
         row = registry.iloc[iloc]
         visit = row['visit']
         band = row['filter']
