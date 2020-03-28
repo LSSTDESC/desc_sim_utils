@@ -50,6 +50,10 @@ class DescObsMdGenerator:
         return obs_md
 
 
+def reformat_sims_detname(detname):
+    return 'R{}{}_S{}{}'.format(*[_ for _ in detname if _.isdigit()])
+
+
 class SkyMapDepth:
     """
     Class to estimate depth in skyMap patches for a set of sensor-visits.
@@ -73,10 +77,12 @@ class SkyMapDepth:
             self.sky_map = pickle.load(fd)
         self.sky_map_polygons \
             = SkyMapPolygons(self.sky_map, tract_info_file=tract_info_file)
-        self.camera \
-            = obs_lsst.LsstCamMapper().camera if camera is None else camera
+        #self.camera \
+        #    = obs_lsst.LsstCamMapper().camera if camera is None else camera
+        self.camera = lsst.sims.coordUtils.lsst_camera()
         self.obs_mds = dict()
-        self.detectors = {det.getName(): det for det in self.camera
+        self.detectors = {reformat_sims_detname(det.getName()): det
+                          for det in self.camera
                           if det.getType() == cameraGeom.SCIENCE}
         columns = 'band tract patch visit detname'.split()
         self.df = pd.DataFrame(columns=columns)
@@ -111,7 +117,7 @@ class SkyMapDepth:
                                         row_bounds=row_bounds,
                                         camera=self.camera)
 
-    def process_raw_files(self, raw_files):
+    def process_raw_files(self, raw_files, opsim_db_file=None):
         """
         Process a set of raw files, adding band, tract, patch, visit,
         detname info to the internal data frame containing the
@@ -123,7 +129,13 @@ class SkyMapDepth:
             The raw files to process.  The filenames are assumed to follow
             the imSim naming convention, i.e.,
             `lsst_a_<visit>_<raftName>_<detectorName>_<band>.fits`.
+        opsim_db_file: str [None]
+            Filename of the opsim db to use for obtaining the observation
+            metadata associated with a given visit.  If None, then
+            observation metadata will be extracted from the raw file headers.
         """
+        if opsim_db_file is not None:
+            desc_obs_gen = DescObsMdGenerator(opsim_db_file)
         rows = []
         for item in raw_files:
             # Assuming raw filenames follow the imSim naming convention.
@@ -131,7 +143,10 @@ class SkyMapDepth:
             visit = int(tokens[2])
             band = tokens[-1][0]
             if visit not in self.obs_mds:
-                self.obs_mds[visit] = get_obs_md_from_raw(item)
+                if opsim_db_file is not None:
+                    self.obs_mds[visit] = desc_obs_gen.create(visit)
+                else:
+                    self.obs_mds[visit] = get_obs_md_from_raw(item)
             detname = '_'.join(tokens[3:5])
             det = self.detectors[detname]
             polygon = get_det_polygon(det, self.camera, self.obs_mds[visit])
@@ -399,10 +414,6 @@ def make_box_wcs_region(box, wcs, margin=0.0):
                                                  coord.getDec().asRadians())
         vertices.append(lsst.sphgeom.UnitVector3d(lonlat))
     return lsst.sphgeom.ConvexPolygon(vertices)
-
-
-def reformat_sims_detname(detname):
-    return 'R{}{}_S{}{}'.format(*[_ for _ in detname if _.isdigit()])
 
 
 def process_registry_file(registry_file, opsim_db, sky_map_polygons,
