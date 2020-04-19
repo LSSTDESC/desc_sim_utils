@@ -12,8 +12,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
-import lsst.afw.geom as afw_geom
+import lsst.geom as lsst_geom
 from lsst.afw import cameraGeom
+import lsst.sims.coordUtils
 import lsst.obs.lsst as obs_lsst
 import lsst.sphgeom
 with warnings.catch_warnings():
@@ -22,27 +23,36 @@ with warnings.catch_warnings():
     from lsst.sims.catUtils.utils import ObservationMetaDataGenerator
     from lsst.sims.utils import ObservationMetaData, getRotSkyPos
 
+
 __all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region',
-           'DescOpsimDbParams', 'get_det_polygon', 'process_registry_file']
+           'DescObsMdGenerator', 'get_det_polygon', 'process_registry_file']
 
 
-class DescOpsimDbParams:
+class DescObsMdGenerator:
     def __init__(self, opsim_db_file):
-        self.conn = sqlite3.connect(opsim_db_file)
-    def update_obs_md(self, obs_md, visit):
-        """
-        Update the obs_md object with the DESC dithered versions
-        of pointing parameters.
-        """
-        query = '''select descDitheredRA, descDitheredDec,
-                   descDitheredRotTelPos from summary
-                   where obshistid={}'''.format(visit)
-        curs = self.conn.execute(query)
-        ra, dec, rottelpos = [np.degrees(_) for _ in curs][0]
+        self.obs_gen = ObservationMetaDataGenerator(database=opsim_db_file,
+                                                    driver='sqlite')
+        self.opsim_db_file = opsim_db_file
+
+    def create(self, visit):
+        obs_md = self.obs_gen.getObservationMetaData(obsHistID=visit,
+                                                     boundType='circle',
+                                                     boundLength=0)[0]
+        query = f'''select descDitheredRA, descDitheredDec,
+                    descDitheredRotTelPos from summary where
+                    obsHistID={visit}'''
+        with sqlite3.connect(self.opsim_db_file) as conn:
+            curs = conn.execute(query)
+            ra, dec, rottelpos = [np.degrees(_) for _ in curs][0]
         obs_md.pointingRA = ra
         obs_md.pointingDec = dec
         obs_md.rotSkyPos = getRotSkyPos(ra, dec, obs_md, rottelpos)
         return obs_md
+
+
+def reformat_sims_detname(detname):
+    return 'R{}{}_S{}{}'.format(*[_ for _ in detname if _.isdigit()])
+
 
 class SkyMapDepth:
     """
@@ -67,10 +77,12 @@ class SkyMapDepth:
             self.sky_map = pickle.load(fd)
         self.sky_map_polygons \
             = SkyMapPolygons(self.sky_map, tract_info_file=tract_info_file)
-        self.camera \
-            = obs_lsst.LsstCamMapper().camera if camera is None else camera
+        #self.camera \
+        #    = obs_lsst.LsstCamMapper().camera if camera is None else camera
+        self.camera = lsst.sims.coordUtils.lsst_camera()
         self.obs_mds = dict()
-        self.detectors = {det.getName(): det for det in self.camera
+        self.detectors = {reformat_sims_detname(det.getName()): det
+                          for det in self.camera
                           if det.getType() == cameraGeom.SCIENCE}
         columns = 'band tract patch visit detname'.split()
         self.df = pd.DataFrame(columns=columns)
@@ -105,7 +117,7 @@ class SkyMapDepth:
                                         row_bounds=row_bounds,
                                         camera=self.camera)
 
-    def process_raw_files(self, raw_files):
+    def process_raw_files(self, raw_files, opsim_db_file=None):
         """
         Process a set of raw files, adding band, tract, patch, visit,
         detname info to the internal data frame containing the
@@ -117,7 +129,13 @@ class SkyMapDepth:
             The raw files to process.  The filenames are assumed to follow
             the imSim naming convention, i.e.,
             `lsst_a_<visit>_<raftName>_<detectorName>_<band>.fits`.
+        opsim_db_file: str [None]
+            Filename of the opsim db to use for obtaining the observation
+            metadata associated with a given visit.  If None, then
+            observation metadata will be extracted from the raw file headers.
         """
+        if opsim_db_file is not None:
+            desc_obs_gen = DescObsMdGenerator(opsim_db_file)
         rows = []
         for item in raw_files:
             # Assuming raw filenames follow the imSim naming convention.
@@ -125,7 +143,10 @@ class SkyMapDepth:
             visit = int(tokens[2])
             band = tokens[-1][0]
             if visit not in self.obs_mds:
-                self.obs_mds[visit] = get_obs_md_from_raw(item)
+                if opsim_db_file is not None:
+                    self.obs_mds[visit] = desc_obs_gen.create(visit)
+                else:
+                    self.obs_mds[visit] = get_obs_md_from_raw(item)
             detname = '_'.join(tokens[3:5])
             det = self.detectors[detname]
             polygon = get_det_polygon(det, self.camera, self.obs_mds[visit])
@@ -136,7 +157,7 @@ class SkyMapDepth:
         self.df = self.df.append(pd.DataFrame(rows, columns=self.df.columns),
                                  ignore_index=True)
 
-    def compute_patch_visits(self):
+    def compute_patch_visits(self, visit_range=None):
         """
         Compute the number of visits per patch for each band.
         """
@@ -154,10 +175,13 @@ class SkyMapDepth:
                     self.ra[band].append(ra)
                     self.dec[band].append(dec)
                     visits = set(df_tract.query('patch=="%s"' % patch)['visit'])
+                    if visit_range is not None:
+                        visits = set(_ for _ in visits
+                                     if visit_range[0] <= _ <= visit_range[1])
                     self.visits[band].append(len(visits))
 
     def plot_visit_depths(self, band, title=None, ax=None, figsize=None,
-                          markersize=None, cmap_name='plasma'):
+                          markersize=None, use_log10=False, cmap_name='plasma'):
         """
         Plot number of visits per patch.
 
@@ -175,6 +199,8 @@ class SkyMapDepth:
             Size of the figure in inches.
         markersize: float [None]
             If None, then the default is used: `rcParams['lines.markersize']**2`
+        use_log10: bool [False]
+            Flag to use log10 of map values.
         cmap_name: str ['plasma']
             The name of the colormap to use.
 
@@ -191,12 +217,27 @@ class SkyMapDepth:
         cmap = matplotlib.cm.get_cmap(cmap_name)
         if self.ra is None:
             self.compute_patch_visits()
-        plt.scatter(self.ra[band], self.dec[band], c=self.visits[band],
-                    s=markersize, cmap=cmap)
-        plt.colorbar()
+        ra = np.array(self.ra[band])
+        dec = np.array(self.dec[band])
+        visits = np.array(self.visits[band])
+        if use_log10:
+            index = np.where(visits >= 1)
+            ra = ra[index]
+            dec = dec[index]
+            visits = np.log10(visits[index])
+        plt.scatter(ra, dec, c=visits, s=markersize, cmap=cmap)
+        colorbar = plt.colorbar()
+        if use_log10:
+            ticks = sorted(list(set(
+                [int(_) for _ in np.log10(np.logspace(0, max(visits)))])))
+            ticklabels = [10**_ for _ in ticks]
+            colorbar.set_ticks(ticks)
+            colorbar.set_ticklabels(ticklabels)
         plt.title(title)
         plt.xlabel('RA (degrees)')
         plt.ylabel('Dec (degrees)')
+        xlims = plt.axis()[:2]
+        ax.set_xlim(xlims[1], xlims[0])
         return ax
 
 
@@ -217,9 +258,9 @@ def get_patch_center(tract_info, patch_id):
     (float, float): (RA, Dec) in degrees.
     """
     patch_info = tract_info.getPatchInfo(patch_id)
-    patch_box = afw_geom.Box2D(patch_info.getOuterBBox())
+    patch_box = lsst_geom.Box2D(patch_info.getOuterBBox())
     return tract_info.getWcs().pixelToSky(patch_box.getCenter())\
-                              .getPosition(afw_geom.degrees)
+                              .getPosition(lsst_geom.degrees)
 
 
 def get_obs_md_from_raw(raw_file):
@@ -352,7 +393,7 @@ def make_box_wcs_region(box, wcs, margin=0.0):
 
     Parameters
     ----------
-    box: lsst.afw.geom.Box2I or lsst.afw.geom.Box2D
+    box: lsst.geom.Box2I or lsst.geom.Box2D
         A box in the pixel coordinate system defined by the WCS.
     wcs: lsst.afw.image.Wcs
         A mapping from a pixel coordinate system to the sky.
@@ -364,7 +405,7 @@ def make_box_wcs_region(box, wcs, margin=0.0):
     -------
     lsst.sphgeom.ConvexPolygon
     """
-    box = afw_geom.Box2D(box)
+    box = lsst_geom.Box2D(box)
     box.grow(margin)
     vertices = []
     for point in box.getCorners():
@@ -405,9 +446,9 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     pandas DataFrame
     """
     if camera is None:
-        camera = obs_lsst.LsstCamMapper().camera
-    obs_gen = ObservationMetaDataGenerator(database=opsim_db, driver='sqlite')
-    desc_opsim_db_params = DescOpsimDbParams(opsim_db)
+        #camera = obs_lsst.LsstCamMapper().camera
+        camera = lsst.sims.coordUtils.lsst_camera()
+    desc_obs_gen = DescObsMdGenerator(opsim_db)
     rows = []
     query = 'select visit, filter, raftName, detectorName from raw'
     if constraint is not None:
@@ -415,30 +456,30 @@ def process_registry_file(registry_file, opsim_db, sky_map_polygons,
     with sqlite3.connect(registry_file) as conn:
         registry = pd.read_sql(query, conn)
     nrows = len(registry)
-    print("processing {} rows from {}".format(nrows, registry_file))
-    sys.stdout.flush()
     obs_mds = dict()
-    detectors = {det.getName(): det for det in camera
+    detectors = {reformat_sims_detname(det.getName()): det for det in camera
                  if det.getType() == cameraGeom.SCIENCE}
 
     df = pd.DataFrame(columns='band tract patch visit detname'.split())
     if row_bounds is not None:
         rmin = row_bounds[0]
         rmax = min(row_bounds[1], nrows)
+    else:
+        rmin = 0
+        rmax = nrows
+    print("processing {} rows from {}".format(rmax - rmin, registry_file))
+    sys.stdout.flush()
     for iloc in range(rmin, rmax):
-        print('{} / {}'.format(iloc, rmax - rmin))
-        sys.stdout.flush()
+#        print('{} / {}'.format(iloc, rmax - rmin))
+#        sys.stdout.flush()
         row = registry.iloc[iloc]
         visit = row['visit']
         band = row['filter']
         if visit not in obs_mds:
-            obs_md = obs_gen.getObservationMetaData(obsHistID=visit,
-                                                    boundType='circle',
-                                                    boundLength=0)[0]
-            obs_mds[visit] = desc_opsim_db_params.update_obs_md(obs_md, visit)
+            obs_mds[visit] = desc_obs_gen.create(visit)
         detname = '_'.join((row['raftName'], row['detectorName']))
         det = detectors[detname]
-        polygon = get_det_polygon(det,camera, obs_mds[visit])
+        polygon = get_det_polygon(det, camera, obs_mds[visit])
         tract_info = sky_map_polygons.find_overlaps(polygon)
         for tract, patches in tract_info:
             for patch in patches:

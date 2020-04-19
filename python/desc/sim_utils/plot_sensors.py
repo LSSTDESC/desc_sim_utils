@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib import patches
-import lsst.afw.geom as afw_geom
+import lsst.geom as lsst_geom
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import lsst.sims.coordUtils
@@ -23,7 +23,7 @@ def make_patch(vertexList, wcs=None):
     vertexList: list of coordinates
         These are the corners of the region to be plotted either in
         pixel coordinates or sky coordinates.
-    wcs: lsst.afw.geom.skyWcs.skyWcs.SkyWcs [None]
+    wcs: lsst.geom.skyWcs.skyWcs.SkyWcs [None]
         The WCS object used to convert from pixel to sky coordinates.
 
     Returns
@@ -32,7 +32,7 @@ def make_patch(vertexList, wcs=None):
         matplotlib uses to plot a patch.
     """
     if wcs is not None:
-        skyPatchList = [wcs.pixelToSky(pos).getPosition(afw_geom.degrees)
+        skyPatchList = [wcs.pixelToSky(pos).getPosition(lsst_geom.degrees)
                         for pos in vertexList]
     else:
         skyPatchList = vertexList
@@ -125,7 +125,7 @@ def plot_skymap_tract(skyMap, tract=0, title=None, ax=None,
     if title is None:
         title = 'tract {}'.format(tract)
     tract_info = skyMap[tract]
-    tractBox = afw_geom.Box2D(tract_info.getBBox())
+    tractBox = lsst_geom.Box2D(tract_info.getBBox())
     tractPosList = tractBox.getCorners()
     wcs = tract_info.getWcs()
     xNum, yNum = tract_info.getNumPatches()
@@ -135,13 +135,13 @@ def plot_skymap_tract(skyMap, tract=0, title=None, ax=None,
         ax = fig.add_subplot(111)
 
     tract_center = wcs.pixelToSky(tractBox.getCenter())\
-                      .getPosition(afw_geom.degrees)
+                      .getPosition(lsst_geom.degrees)
     ax.text(tract_center[0], tract_center[1], '%d' % tract, size=16,
             ha="center", va="center", color='blue')
     for x in range(xNum):
         for y in range(yNum):
             patch_info = tract_info.getPatchInfo([x, y])
-            patchBox = afw_geom.Box2D(patch_info.getOuterBBox())
+            patchBox = lsst_geom.Box2D(patch_info.getOuterBBox())
             pixelPatchList = patchBox.getCorners()
             path = make_patch(pixelPatchList, wcs)
             try:
@@ -151,11 +151,11 @@ def plot_skymap_tract(skyMap, tract=0, title=None, ax=None,
             patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
             ax.add_patch(patch)
             center = wcs.pixelToSky(patchBox.getCenter())\
-                        .getPosition(afw_geom.degrees)
+                        .getPosition(lsst_geom.degrees)
             ax.text(center[0], center[1], '%d,%d' % (x, y), size=6,
                     ha="center", va="center")
 
-    skyPosList = [wcs.pixelToSky(pos).getPosition(afw_geom.degrees)
+    skyPosList = [wcs.pixelToSky(pos).getPosition(lsst_geom.degrees)
                   for pos in tractPosList]
     ax.set_xlim(max(coord[0] for coord in skyPosList) + 1,
                 min(coord[0] for coord in skyPosList) - 1)

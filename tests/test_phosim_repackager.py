@@ -2,7 +2,7 @@
 Example unit tests for desc_sim_utils package
 """
 import unittest
-import lsst.afw.geom as afw_geom
+import lsst.geom
 import desc.sim_utils
 
 class PhosimRepackagerTestCase(unittest.TestCase):
@@ -17,8 +17,8 @@ class PhosimRepackagerTestCase(unittest.TestCase):
         """Unit tests for phosim_repackager"""
         # Test NOAO section keyword generator.
         xmin, xmax, ymin, ymax = 3, 512, 0, 2000
-        bbox = afw_geom.Box2I(afw_geom.Point2I(xmin, ymin),
-                              afw_geom.Point2I(xmax, ymax))
+        bbox = lsst.geom.Box2I(lsst.geom.Point2I(xmin, ymin),
+                               lsst.geom.Point2I(xmax, ymax))
         value = desc.sim_utils.noao_section_keyword(bbox)
         self.assertEqual('[4:513,1:2001]', value)
         value = desc.sim_utils.noao_section_keyword(bbox, flipx=True)
