@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 from lsst.afw import cameraGeom
 import lsst.sims.coordUtils
+import lsst.sphgeom
 import lsst.obs.lsst as obs_lsst
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
@@ -34,6 +35,15 @@ class Run20Region:
             dra = self._dra(dec)
             self.region_corners.extend([(ra_mid - dra, dec),
                                         (ra_mid + dra, dec)])
+        self.region_polygon = self.get_convex_polygon(self.region_corners)
+
+    @staticmethod
+    def get_convex_polygon(corners):
+        vertices = []
+        for corner in corners:
+            lonlat = lsst.sphgeom.LonLat.fromDegrees(*corner)
+            vertices.append(lsst.sphgeom.UnitVector3d(lonlat))
+        return lsst.sphgeom.ConvexPolygon(vertices)
 
     def _dra(self, dec):
         return np.abs(self._dra_scale/np.cos(np.radians(dec)))
@@ -46,16 +56,8 @@ class Run20Region:
         return True
 
     def contains_region_corners(self, sensor_corners):
-        ra_vals, dec_vals = [], []
-        for corner in sensor_corners:
-            ra_vals.append(corner[0])
-            dec_vals.append(corner[1])
-        ra_min, ra_max = min(ra_vals), max(ra_vals)
-        dec_min, dec_max = min(dec_vals), max(dec_vals)
-        for ra, dec in self.region_corners:
-            if all([ra > ra_min, ra < ra_min, dec > dec_min, dec < dec_max]):
-                return True
-        return False
+        det_polygon = self.get_convex_polygon(sensor_corners)
+        return self.region_polygon.relate(det_polygon) != lsst.sphgeom.DISJOINT
 
     def trim_sensors(self, instcat_or_obs_md):
         if isinstance(instcat_or_obs_md, ObservationMetaData):

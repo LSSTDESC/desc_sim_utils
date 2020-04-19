@@ -48,7 +48,7 @@ def make_patch(vertexList, wcs=None):
 
 
 def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
-                 figsize=(8, 6)):
+                 figsize=(8, 6), label_sensors=False):
     """
     Plot the CCDs in the LSST focal plane using CCD coordinates
     derived from the pointing info using the lsst.sims code.
@@ -68,6 +68,8 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
         Color to use for plotting the individual CCDs.
     figsize: tuple [(8, 6)]
         Size of the figure in inches
+    label_sensors: bool [False]
+        If True, then label the sensors on the map by their det_name.
 
     Returns
     -------
@@ -86,6 +88,12 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
         path = make_patch(corners[corner_index])
         ccd = patches.PathPatch(path, alpha=0.2, lw=1, color=color)
         ax.add_patch(ccd)
+        if label_sensors:
+            ras = [_[0] for _ in corners]
+            decs = [_[1] for _ in corners]
+            center = ((min(ras) + max(ras))/2., (min(decs) + max(decs))/2.)
+            ax.text(center[0], center[1], detname, size=6,
+                    ha="center", va="center")
 
     return ax
 
