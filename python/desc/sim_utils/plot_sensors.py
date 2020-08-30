@@ -11,7 +11,8 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import lsst.sims.coordUtils
 
-__all__ = ['make_patch', 'plot_sensors', 'plot_skymap_tract', 'set_xylims']
+__all__ = ['make_patch', 'plot_sensors', 'plot_tract', 'plot_tract_patches',
+           'set_xylims']
 
 
 def make_patch(vertexList, wcs=None):
@@ -98,10 +99,37 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
     return ax
 
 
-def plot_skymap_tract(skyMap, tract=0, title=None, ax=None,
-                      patch_colors=None):
+def plot_tract(skyMap, tract_id, color='blue', fontsize=10):
     """
     Plot a tract from a skyMap.
+
+    Parameters
+    ----------
+    skyMap: lsst.skyMap.SkyMap
+        The SkyMap object containing the tract and patch information.
+    tract_id: int
+        The tract id of the desired tract to plot.
+    color: str ['blue']
+        Color to use for rendering the tract and tract label.
+    fontsize: int [10]
+        Size of font to use for tract label.
+    """
+    tract_info = skymap[tract_id]
+    tractBox = lsst.geom.Box2D(tract_info.getBBox())
+    wcs = tract_info.getWcs()
+    tract_center = wcs.pixelToSky(tractBox.getCenter())\
+                      .getPosition(lsst.geom.degrees)
+    ax.text(tract_center[0], tract_center[1], '%d' % tract_id, size=fontsize,
+            ha="center", va="center", color='blue')
+    path = desc.sim_utils.make_patch(tractBox.getCorners(), wcs)
+    patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
+    ax.add_patch(patch)
+
+
+def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
+                       patch_colors=None):
+    """
+    Plot the patches for a tract from a skyMap.
 
     Parameters
     ----------
