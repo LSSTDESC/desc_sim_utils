@@ -38,6 +38,11 @@ class Run20Region:
         self.region_polygon = self.get_convex_polygon(self.region_corners)
 
     @staticmethod
+    def DDFRegion():
+        return Run20Region(ra_mid=53.125, ne_corner=(53.764, -27.533),
+                           dec_range=(-28.667, -27.533))
+
+    @staticmethod
     def get_convex_polygon(corners):
         vertices = []
         for corner in corners:
