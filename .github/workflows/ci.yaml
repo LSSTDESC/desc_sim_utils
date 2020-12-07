@@ -1,0 +1,57 @@
+name: desc_sim_utils CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  HOME: /home/lsst
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        stack:
+          - lsstdesc/stack-sims:w_2019_42-sims_w_2019_42-v2
+
+    container: ${{ matrx.stack }}
+
+    steps:
+    - name: Set up environment
+      run: |
+        cd $HOME
+        echo "source scl_source enable devtoolset-8" >> .bashrc
+        echo "source /opt/lsst/software/stack/loadLSST.bash" >> .bashrc
+        echo "setup lsst_sims" >> .bashrc
+        echo "cd $HOME" >> .bashrc
+
+    - name: Install git
+      shell: bash -l {0}
+      run: |
+        gittest=`conda list git | grep git`
+        if [ -z "$gittest" ]; then
+            conda install -y git
+        fi
+
+    - uses: actions/checkout@v2
+
+    - name: Install CI tools and package dependencies
+      shell: bash -l {0}
+      run: |
+        pip install nose coverage
+        git clone https://github.com/lsst/obs_lsst.git
+        cd obs_lsst
+        setup -r . -j
+        git checkout dc2/run2.1
+        scons lib python shebang examples doc policy python/lsst/obs/lsst/version.py
+        cd ..
+        eups declare desc_sim_utils -r ${PWD}/desc_sim_utils -t current
+
+    - name: Test with nosetests
+      shell: bash -l {0}
+      run: |
+        nosetests -s --with-coverage --cover-package=desc.sim_utils
