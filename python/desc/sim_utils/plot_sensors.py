@@ -6,10 +6,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib import patches
-import lsst.geom as lsst_geom
+import lsst.geom
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    import lsst.sims.coordUtils
+    try:
+        import lsst.sims.coordUtils
+    except ImportError as eobj:
+        print(eobj)
 
 __all__ = ['make_patch', 'plot_sensors', 'plot_tract', 'plot_tract_patches',
            'set_xylims']
@@ -33,7 +36,7 @@ def make_patch(vertexList, wcs=None):
         matplotlib uses to plot a patch.
     """
     if wcs is not None:
-        skyPatchList = [wcs.pixelToSky(pos).getPosition(lsst_geom.degrees)
+        skyPatchList = [wcs.pixelToSky(pos).getPosition(lsst.geom.degrees)
                         for pos in vertexList]
     else:
         skyPatchList = vertexList
@@ -99,29 +102,34 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
     return ax
 
 
-def plot_tract(skyMap, tract_id, color='blue', fontsize=10):
+def plot_tract(skymap, tract_id, ax=None, color='blue', fontsize=10):
     """
     Plot a tract from a skyMap.
 
     Parameters
     ----------
-    skyMap: lsst.skyMap.SkyMap
+    skymap: lsst.skyMap.SkyMap
         The SkyMap object containing the tract and patch information.
     tract_id: int
         The tract id of the desired tract to plot.
+    ax: matplotlib.axes.Axes [None]
+        Axes object for the plot
     color: str ['blue']
         Color to use for rendering the tract and tract label.
     fontsize: int [10]
         Size of font to use for tract label.
     """
+    if ax is None:
+        ax = plt.figure(figsize=(12, 8)).add_subplot(111)
     tract_info = skymap[tract_id]
     tractBox = lsst.geom.Box2D(tract_info.getBBox())
     wcs = tract_info.getWcs()
     tract_center = wcs.pixelToSky(tractBox.getCenter())\
                       .getPosition(lsst.geom.degrees)
+    print(tract_center)
     ax.text(tract_center[0], tract_center[1], '%d' % tract_id, size=fontsize,
             ha="center", va="center", color='blue')
-    path = desc.sim_utils.make_patch(tractBox.getCorners(), wcs)
+    path = make_patch(tractBox.getCorners(), wcs)
     patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
     ax.add_patch(patch)
 
@@ -153,7 +161,7 @@ def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
     if title is None:
         title = 'tract {}'.format(tract)
     tract_info = skyMap[tract]
-    tractBox = lsst_geom.Box2D(tract_info.getBBox())
+    tractBox = lsst.geom.Box2D(tract_info.getBBox())
     tractPosList = tractBox.getCorners()
     wcs = tract_info.getWcs()
     xNum, yNum = tract_info.getNumPatches()
@@ -163,13 +171,13 @@ def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
         ax = fig.add_subplot(111)
 
     tract_center = wcs.pixelToSky(tractBox.getCenter())\
-                      .getPosition(lsst_geom.degrees)
+                      .getPosition(lsst.geom.degrees)
     ax.text(tract_center[0], tract_center[1], '%d' % tract, size=16,
             ha="center", va="center", color='blue')
     for x in range(xNum):
         for y in range(yNum):
             patch_info = tract_info.getPatchInfo([x, y])
-            patchBox = lsst_geom.Box2D(patch_info.getOuterBBox())
+            patchBox = lsst.geom.Box2D(patch_info.getOuterBBox())
             pixelPatchList = patchBox.getCorners()
             path = make_patch(pixelPatchList, wcs)
             try:
@@ -179,11 +187,11 @@ def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
             patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
             ax.add_patch(patch)
             center = wcs.pixelToSky(patchBox.getCenter())\
-                        .getPosition(lsst_geom.degrees)
+                        .getPosition(lsst.geom.degrees)
             ax.text(center[0], center[1], '%d,%d' % (x, y), size=6,
                     ha="center", va="center")
 
-    skyPosList = [wcs.pixelToSky(pos).getPosition(lsst_geom.degrees)
+    skyPosList = [wcs.pixelToSky(pos).getPosition(lsst.geom.degrees)
                   for pos in tractPosList]
     ax.set_xlim(max(coord[0] for coord in skyPosList) + 1,
                 min(coord[0] for coord in skyPosList) - 1)
