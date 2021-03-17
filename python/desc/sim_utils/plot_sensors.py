@@ -126,12 +126,12 @@ def plot_tract(skymap, tract_id, ax=None, color='blue', fontsize=10):
     wcs = tract_info.getWcs()
     tract_center = wcs.pixelToSky(tractBox.getCenter())\
                       .getPosition(lsst.geom.degrees)
-    print(tract_center)
     ax.text(tract_center[0], tract_center[1], '%d' % tract_id, size=fontsize,
             ha="center", va="center", color='blue')
     path = make_patch(tractBox.getCorners(), wcs)
     patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
     ax.add_patch(patch)
+    return ax
 
 
 def plot_tract_patches(skyMap, tract=0, title=None, ax=None,

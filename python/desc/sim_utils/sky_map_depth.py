@@ -14,14 +14,17 @@ from astropy.io import fits
 import pandas as pd
 import lsst.geom as lsst_geom
 from lsst.afw import cameraGeom
-import lsst.sims.coordUtils
 import lsst.obs.lsst as obs_lsst
 import lsst.sphgeom
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
-    from lsst.sims.coordUtils import getCornerRaDec
-    from lsst.sims.catUtils.utils import ObservationMetaDataGenerator
-    from lsst.sims.utils import ObservationMetaData, getRotSkyPos
+    try:
+        import lsst.sims.coordUtils
+        from lsst.sims.coordUtils import getCornerRaDec
+        from lsst.sims.catUtils.utils import ObservationMetaDataGenerator
+        from lsst.sims.utils import ObservationMetaData, getRotSkyPos
+    except ImportError as eobj:
+        print('sky_map_depth ImportError:', eobj)
 
 
 __all__ = ['SkyMapDepth', 'SkyMapPolygons', 'make_box_wcs_region',

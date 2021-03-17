@@ -5,13 +5,16 @@ given visit.
 import warnings
 import numpy as np
 from lsst.afw import cameraGeom
-import lsst.sims.coordUtils
 import lsst.sphgeom
 import lsst.obs.lsst as obs_lsst
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
-    from lsst.sims.coordUtils import getCornerRaDec
-    from lsst.sims.utils import ObservationMetaData
+    try:
+        import lsst.sims.coordUtils
+        from lsst.sims.coordUtils import getCornerRaDec
+        from lsst.sims.utils import ObservationMetaData
+    except ImportError as eobj:
+        print("trim_sensors Import Error:", eobj)
 
 
 __all__ = ['Run20Region', 'get_obs_md']
