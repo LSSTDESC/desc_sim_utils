@@ -102,7 +102,8 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
     return ax
 
 
-def plot_tract(skymap, tract_id, ax=None, color='blue', fontsize=10):
+def plot_tract(skymap, tract_id, ax=None, color='blue', apply_label=True,
+               fontsize=10):
     """
     Plot a tract from a skyMap.
 
@@ -116,6 +117,8 @@ def plot_tract(skymap, tract_id, ax=None, color='blue', fontsize=10):
         Axes object for the plot
     color: str ['blue']
         Color to use for rendering the tract and tract label.
+    apply_label: bool [True]
+        Flag to apply the label to the tract.
     fontsize: int [10]
         Size of font to use for tract label.
     """
@@ -126,8 +129,9 @@ def plot_tract(skymap, tract_id, ax=None, color='blue', fontsize=10):
     wcs = tract_info.getWcs()
     tract_center = wcs.pixelToSky(tractBox.getCenter())\
                       .getPosition(lsst.geom.degrees)
-    ax.text(tract_center[0], tract_center[1], '%d' % tract_id, size=fontsize,
-            ha="center", va="center", color='blue')
+    if apply_label:
+        ax.text(tract_center[0], tract_center[1], '%d' % tract_id,
+                size=fontsize, ha="center", va="center", color=color)
     path = make_patch(tractBox.getCorners(), wcs)
     patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
     ax.add_patch(patch)
@@ -135,7 +139,8 @@ def plot_tract(skymap, tract_id, ax=None, color='blue', fontsize=10):
 
 
 def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
-                       patch_colors=None):
+                       color='blue', apply_labels=True, patch_set=None,
+                       label_tract=False):
     """
     Plot the patches for a tract from a skyMap.
 
@@ -146,12 +151,21 @@ def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
     tract: int [0]
         The tract id of the desired tract to plot.
     title: str [None]
-        Title of the tract plot.  If None, the use `tract <id>`.
+        Title of the tract plot.  If None, the use `tract <id>`. If '',
+        then don't try to set the title at all to avoid overwriting
+        an existing title.
     ax: matplotlib.axes._subplots.AxesSubplot [None]
         The subplot object to contain the tract plot.  If None, then
         make a new one.
-    patch_colors: dict [None]
-        Dictionary of colors keyed by patchId.
+    color: str ['blue']
+        Color to use for plotting patches.
+    apply_labels: bool [True]
+        Flag to apply labels to patches.
+    patch_set: set [None]
+        Set of patches (identified by numerical index by iterating over
+        the tract) in the tract to plot. If None, then plot all of them.
+    label_tract: bool [False]
+        Flag to label the tract.
 
     Returns
     -------
@@ -166,30 +180,35 @@ def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
     wcs = tract_info.getWcs()
     xNum, yNum = tract_info.getNumPatches()
 
+    if patch_set is not None:
+        patch_map = dict((patch.getIndex(), i)
+                         for i, patch in enumerate(tract_info))
+
     if ax is None:
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111)
 
-    tract_center = wcs.pixelToSky(tractBox.getCenter())\
-                      .getPosition(lsst.geom.degrees)
-    ax.text(tract_center[0], tract_center[1], '%d' % tract, size=16,
-            ha="center", va="center", color='blue')
+    if label_tract:
+        tract_center = wcs.pixelToSky(tractBox.getCenter())\
+                          .getPosition(lsst.geom.degrees)
+        ax.text(tract_center[0], tract_center[1], '%d' % tract, size=12,
+                ha="center", va="center", color='blue')
     for x in range(xNum):
         for y in range(yNum):
             patch_info = tract_info.getPatchInfo([x, y])
+            if (patch_set is not None and
+                patch_map[tuple(patch_info.getIndex())] not in patch_set):
+                continue
             patchBox = lsst.geom.Box2D(patch_info.getOuterBBox())
             pixelPatchList = patchBox.getCorners()
             path = make_patch(pixelPatchList, wcs)
-            try:
-                color = patch_colors[(x, y)]
-            except (TypeError, KeyError):
-                color = 'blue'
             patch = patches.PathPatch(path, alpha=0.1, lw=1, color=color)
             ax.add_patch(patch)
-            center = wcs.pixelToSky(patchBox.getCenter())\
-                        .getPosition(lsst.geom.degrees)
-            ax.text(center[0], center[1], '%d,%d' % (x, y), size=6,
-                    ha="center", va="center")
+            if apply_labels:
+                center = wcs.pixelToSky(patchBox.getCenter())\
+                            .getPosition(lsst.geom.degrees)
+                ax.text(center[0], center[1], '%d,%d' % (x, y), size=6,
+                        ha="center", va="center")
 
     skyPosList = [wcs.pixelToSky(pos).getPosition(lsst.geom.degrees)
                   for pos in tractPosList]
@@ -200,7 +219,8 @@ def plot_tract_patches(skyMap, tract=0, title=None, ax=None,
     ax.grid(ls=':', color='gray')
     ax.set_xlabel("RA (deg.)")
     ax.set_ylabel("Dec (deg.)")
-    ax.set_title(title)
+    if title != '':
+        ax.set_title(title)
     return ax
 
 
