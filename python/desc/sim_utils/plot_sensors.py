@@ -1,21 +1,43 @@
 """
 Functions to plot LSST sensors on the sky.
 """
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib import patches
 import lsst.geom
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    try:
-        import lsst.sims.coordUtils
-    except ImportError as eobj:
-        print(eobj)
+from lsst.afw.cameraGeom import FOCAL_PLANE, TAN_PIXELS
+import lsst.obs.base
+import lsst.obs.lsst
+
 
 __all__ = ['make_patch', 'plot_sensors', 'plot_tract', 'plot_tract_patches',
            'set_xylims']
+
+
+def get_sky_wcs(ra, dec, rotangle):
+    boresight = lsst.geom.SpherePoint(ra, dec, lsst.geom.degrees)
+    rotangle = lsst.geom.Angle(rotangle, lsst.geom.degrees)
+    return lsst.obs.base.createInitialSkyWcs(boresight, rotangle)
+
+
+class DetCornerCoords:
+    def __init__(self, wcs, camera=None, center_det='R22_S11'):
+        self.wcs = wcs
+        self.camera = (lsst.obs.lsst.imsim.ImsimMapper().camera
+                       if camera is None else camera)
+        self.transform \
+            = camera[center_det].getTransform(FOCAL_PLANE, TAN_PIXELS)
+
+    def get_radec(self, det_name):
+        fp_corners = self.camera[det_name].getCorners(FOCAL_PLANE)
+        corners = [self.transform.applyForward(_) for _ in fp_corners]
+        ra_dec_pairs = []
+        for corner in corners:
+            sphere_point = self.wcs.pixelToSky(corner)
+            ra_dec_pairs.append((sphere_point.getLongitude().asDegrees(),
+                                 sphere_point.getLatitude().asDegrees()))
+        return ra_dec_pairs
 
 
 def make_patch(vertexList, wcs=None):
@@ -51,7 +73,23 @@ def make_patch(vertexList, wcs=None):
     return Path(verts, codes)
 
 
-def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
+def plot_sensors_from_butler(butler, ax, dataId=None, color='green'):
+    datarefs = butler.registry.queryDatasets(datasetType='calexp',
+                                             dataId=dataId)
+    for i, dataref in enumerate(datarefs):
+        calexp = butler.get('calexp', dataId=dataref.dataId)
+        wcs = calexp.getWcs()
+        det = calexp.getDetector()
+        corners = det.getCorners(TAN_PIXELS)
+        radec = [wcs.pixelToSky(corner).getPosition(lsst.geom.degrees)
+                 for corner in corners]
+        path = make_patch(radec)
+        ccd = patches.PathPatch(path, alpha=0.2, lw=1, color=color)
+        ax.add_patch(ccd)
+    return ax
+
+
+def plot_sensors(sensors, camera, wcs, ax=None, color='red',
                  figsize=(8, 6), label_sensors=False):
     """
     Plot the CCDs in the LSST focal plane using CCD coordinates
@@ -63,9 +101,8 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
         List of sensors to plot.
     camera: lsst.afw.cameraGeom.Camera
         Camera object that contains the camera info.
-    obs_md: ObservationMetaData
-        Object containing the pointing information for the
-        desired visit.
+    wcs: lsst.afw.geom.SkyWcs
+        WCS object based on the pointing info.
     ax: matplotlib.axes.Axes
         matplotlib container class of figure elements.
     color: str ['red']
@@ -83,13 +120,11 @@ def plot_sensors(sensors, camera, obs_md, ax=None, color='red',
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
 
-    # Re-order the CCD vertex list returned by the lsst_sims code so
-    # that a rectangle is plotted.
-    corner_index = (np.array([0, 1, 3, 2]),)
+    corner_coords = DetCornerCoords(wcs, camera=camera)
+
     for detname in sensors:
-        corners = np.array(lsst.sims.coordUtils.getCornerRaDec(detname, camera,
-                                                               obs_md))
-        path = make_patch(corners[corner_index])
+        corners = np.array(corner_coords.get_radec(detname))
+        path = make_patch(corners)
         ccd = patches.PathPatch(path, alpha=0.2, lw=1, color=color)
         ax.add_patch(ccd)
         if label_sensors:
